@@ -1,0 +1,194 @@
+{
+  "regression": {
+    "mae": 4.415,
+    "r2_score": 0.657,
+    "model": "Validation-weighted Random Forest + Gradient Boosting Ensemble",
+    "rf_weight": 0.08,
+    "gb_weight": 0.92
+  },
+  "model_comparison": {
+    "Random Forest": {
+      "mae": 4.581,
+      "r2": 0.662
+    },
+    "Gradient Boosting": {
+      "mae": 4.192,
+      "r2": 0.716
+    },
+    "Ensemble": {
+      "mae": 4.191,
+      "r2": 0.716,
+      "rf_weight": 0.08,
+      "gb_weight": 0.92
+    }
+  },
+  "classification": {
+    "accuracy": 0.903,
+    "precision": 0.471,
+    "recall": 0.593,
+    "f1_score": 0.525,
+    "roc_auc": 0.907,
+    "operating_threshold": 0.255,
+    "confusion_matrix": [
+      [
+        255,
+        18
+      ],
+      [
+        11,
+        16
+      ]
+    ],
+    "report": {
+      "0": {
+        "precision": 0.9586466165413534,
+        "recall": 0.9340659340659341,
+        "f1-score": 0.9461966604823747,
+        "support": 273.0
+      },
+      "1": {
+        "precision": 0.47058823529411764,
+        "recall": 0.5925925925925926,
+        "f1-score": 0.5245901639344263,
+        "support": 27.0
+      },
+      "accuracy": 0.9033333333333333,
+      "macro avg": {
+        "precision": 0.7146174259177356,
+        "recall": 0.7633292633292633,
+        "f1-score": 0.7353934122084005,
+        "support": 300.0
+      },
+      "weighted avg": {
+        "precision": 0.9147213622291022,
+        "recall": 0.9033333333333333,
+        "f1-score": 0.9082520757930592,
+        "support": 300.0
+      }
+    },
+    "roc_curve": {
+      "fpr": [
+        0.0,
+        0.0037,
+        0.0037,
+        0.0073,
+        0.0073,
+        0.0147,
+        0.0147,
+        0.0183,
+        0.0183,
+        0.022,
+        0.022,
+        0.0623,
+        0.0623,
+        0.0659,
+        0.0659,
+        0.0769,
+        0.0769,
+        0.1026,
+        0.1026,
+        0.1062,
+        0.1062,
+        0.1136,
+        0.1136,
+        0.1282,
+        0.1282,
+        0.2051,
+        0.2051,
+        0.3919,
+        0.3919,
+        0.4286,
+        0.4286,
+        0.4542,
+        0.4542,
+        1.0
+      ],
+      "tpr": [
+        0.0,
+        0.0,
+        0.1852,
+        0.1852,
+        0.3333,
+        0.3333,
+        0.4074,
+        0.4074,
+        0.4444,
+        0.4444,
+        0.5556,
+        0.5556,
+        0.5926,
+        0.5926,
+        0.6296,
+        0.6296,
+        0.6667,
+        0.6667,
+        0.7037,
+        0.7037,
+        0.7407,
+        0.7407,
+        0.7778,
+        0.7778,
+        0.8148,
+        0.8148,
+        0.8889,
+        0.8889,
+        0.9259,
+        0.9259,
+        0.963,
+        0.963,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "clustering": {
+    "clusters": 2,
+    "silhouette_score": 0.134,
+    "candidate_scores": {
+      "2": 0.134,
+      "3": 0.104,
+      "4": 0.101,
+      "5": 0.097,
+      "6": 0.097
+    }
+  },
+  "feature_importance": [
+    {
+      "feature": "previous_exam_score",
+      "importance": 0.2829
+    },
+    {
+      "feature": "study_hours_per_week",
+      "importance": 0.2143
+    },
+    {
+      "feature": "attendance_percentage",
+      "importance": 0.1447
+    },
+    {
+      "feature": "assignment_score",
+      "importance": 0.1224
+    },
+    {
+      "feature": "internal_assessment_score",
+      "importance": 0.1113
+    },
+    {
+      "feature": "sleep_hours",
+      "importance": 0.0592
+    },
+    {
+      "feature": "parental_support",
+      "importance": 0.0361
+    },
+    {
+      "feature": "extracurricular_activities",
+      "importance": 0.0291
+    }
+  ],
+  "dataset_size": 1500,
+  "train_size": 900,
+  "validation_size": 300,
+  "test_size": 300,
+  "validation_design": "60/20/20 train/validation/test split; threshold selected on validation only; final metrics reported on untouched test set"
+}

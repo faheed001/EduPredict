@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+<rect width="1200" height="700" fill="white"/>
+<text x="600" y="55" text-anchor="middle" font-family="Arial" font-size="30" font-weight="bold">EduPredict 3.0 — System Architecture</text>
+<g font-family="Arial" font-size="18" text-anchor="middle">
+<rect x="70" y="130" width="220" height="100" rx="15" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="180" y="170">Students</text><text x="180" y="200">Login • Update Data</text>
+<rect x="70" y="310" width="220" height="100" rx="15" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="180" y="350">Teachers</text><text x="180" y="380">Review • Intervene</text>
+<rect x="360" y="210" width="240" height="140" rx="15" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="480" y="250">Flask Web Layer</text><text x="480" y="280">Auth • RBAC • CSRF</text><text x="480" y="310">Forms • APIs</text>
+<rect x="680" y="100" width="220" height="120" rx="15" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="790" y="140">ML Engine</text><text x="790" y="170">RF + GB Ensemble</text><text x="790" y="195">Risk + Explainability</text>
+<rect x="680" y="280" width="220" height="120" rx="15" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="790" y="320">Student Analytics</text><text x="790" y="350">K-Means + Isolation</text><text x="790" y="375">Profiles + Anomalies</text>
+<rect x="680" y="460" width="220" height="100" rx="15" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="790" y="500">SQLite Database</text><text x="790" y="530">Students • Predictions</text>
+<rect x="960" y="190" width="180" height="100" rx="15" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="1050" y="230">Decision Support</text><text x="1050" y="260">Risk • Recommendations</text>
+<rect x="960" y="370" width="180" height="100" rx="15" fill="#f5f5f5" stroke="#222" stroke-width="2"/><text x="1050" y="410">Teacher Dashboard</text><text x="1050" y="440">Analytics • Export</text>
+</g>
+<g stroke="#222" stroke-width="3" fill="none" marker-end="url(#a)"><path d="M290 180 L360 245"/><path d="M290 360 L360 315"/><path d="M600 245 L680 180"/><path d="M600 290 L680 340"/><path d="M600 320 L680 500"/><path d="M900 160 L960 230"/><path d="M900 340 L960 420"/><path d="M900 510 L960 420"/></g>
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 z" fill="#222"/></marker></defs>
+<text x="600" y="645" text-anchor="middle" font-family="Arial" font-size="16">Human-in-the-loop: AI flags support teacher review; they do not make automatic academic decisions.</text>
+</svg>

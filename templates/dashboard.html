@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}ML Analytics{% endblock %}
+{% block content %}
+<h1 class="page-title">ML Analytics Dashboard</h1>
+<p class="page-subtitle">Transparent model evaluation, risk analysis, learner profiling and evidence for project review.</p>
+
+<div class="card">
+  <h3>Evaluation & Data Transparency</h3>
+  <p><strong>Dataset:</strong> {{metrics.dataset_size}} synthetic student records for academic demonstration. These metrics do not establish real-world effectiveness.</p>
+  <p><strong>Validation design:</strong> {{metrics.validation_design}}</p>
+  <p><strong>Risk threshold:</strong> {{metrics.classification.operating_threshold}} · <strong>Precision:</strong> {{metrics.classification.precision}} · <strong>Recall:</strong> {{metrics.classification.recall}} · <strong>F1:</strong> {{metrics.classification.f1_score}}</p>
+  <p><strong>Clustering:</strong> K={{metrics.clustering.clusters}}, silhouette={{metrics.clustering.silhouette_score}}. Profiles are exploratory, not diagnostic.</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-value">{{metrics.regression.r2_score|round(3)}}</div><div class="stat-label">Ensemble R²</div></div>
+  <div class="stat-card"><div class="stat-value">{{metrics.regression.mae|round(2)}}</div><div class="stat-label">Test MAE</div></div>
+  <div class="stat-card"><div class="stat-value">{{metrics.classification.roc_auc|round(3)}}</div><div class="stat-label">Risk ROC-AUC</div></div>
+  <div class="stat-card"><div class="stat-value">{{metrics.classification.recall|round(3)}}</div><div class="stat-label">Risk Recall</div></div>
+  <div class="stat-card"><div class="stat-value">{{metrics.dataset_size}}</div><div class="stat-label">Dataset Records</div></div>
+  <div class="stat-card"><div class="stat-value">{{metrics.clustering.clusters}}</div><div class="stat-label">Auto-selected Profiles</div></div>
+</div>
+
+<div class="card">
+  <h3>Regression Model Comparison</h3>
+  <p class="page-subtitle">Validation-set comparison; the final test set is reserved for the reported ensemble result.</p>
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr><th style="text-align:left;padding:10px">Model</th><th style="padding:10px">MAE ↓</th><th style="padding:10px">R² ↑</th></tr></thead>
+      <tbody>
+      {% for name, vals in metrics.model_comparison.items() %}
+        <tr><td style="padding:10px">{{name}}</td><td style="padding:10px;text-align:center">{{vals.mae}}</td><td style="padding:10px;text-align:center">{{vals.r2}}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="charts-grid">
+  <section class="card"><h3>Performance Categories</h3><div id="categoryChart" class="chart-container" aria-label="Performance Categories chart"></div></section>
+  <section class="card"><h3>Average Score by Attendance Band</h3><div id="attendanceChart" class="chart-container" aria-label="Average Score by Attendance Band chart"></div></section>
+  <section class="card"><h3>Average Score by Parental Support</h3><div id="parentChart" class="chart-container" aria-label="Average Score by Parental Support chart"></div></section>
+  <section class="card"><h3>Feature Importance</h3><div id="importanceChart" class="chart-container" aria-label="Feature Importance chart"></div></section>
+  <section class="card"><h3>At-Risk ROC Curve</h3><div id="rocChart" class="chart-container" aria-label="At-Risk ROC Curve chart"></div><p class="page-subtitle">Test-set ROC-AUC: {{metrics.classification.roc_auc}}. Higher area indicates better ranking of risk probability.</p></section>
+  <section class="card"><h3>Confusion Matrix</h3>
+    <table style="width:100%;border-collapse:collapse;text-align:center;margin-top:15px">
+      <tr><th></th><th>Predicted Safe</th><th>Predicted At-Risk</th></tr>
+      <tr><th>Actual Safe</th><td>{{metrics.classification.confusion_matrix[0][0]}}</td><td>{{metrics.classification.confusion_matrix[0][1]}}</td></tr>
+      <tr><th>Actual At-Risk</th><td>{{metrics.classification.confusion_matrix[1][0]}}</td><td>{{metrics.classification.confusion_matrix[1][1]}}</td></tr>
+    </table>
+    <p class="page-subtitle">The matrix is shown to avoid relying on accuracy alone when the at-risk class is smaller.</p>
+  </section>
+</div>
+
+<div class="card">
+  <h3>Responsible-Use Statement</h3>
+  <p>EduPredict is a teacher decision-support prototype. A risk flag is a prompt for human review, not an automatic academic decision. The bundled dataset is synthetic; deployment requires institution-approved anonymized data, temporal validation, fairness analysis, privacy review and monitoring.</p>
+</div>
+
+<div id="analyticsData"
+  data-category='{{category_counts|tojson|forceescape}}'
+  data-attendance-labels='{{attendance_labels|tojson|forceescape}}'
+  data-attendance-values='{{attendance_values|tojson|forceescape}}'
+  data-parent='{{parental_avg|tojson|forceescape}}'
+  data-importance='{{feature_importance|tojson|forceescape}}'
+  data-roc='{{metrics.classification.roc_curve|tojson|forceescape}}'
+  hidden></div>
+{% endblock %}
