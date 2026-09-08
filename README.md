@@ -1,8 +1,8 @@
-# EduPredict 3.0
+# EduPredict
 
 **AI-Based Student Performance Prediction & Early Warning System**
 
-EduPredict 3.0 is a Flask-based educational analytics prototype that combines machine learning, student/teacher workflows, persistent SQLite storage, performance prediction, early-warning risk classification, learning profiles, anomaly detection, personalized recommendations, analytics, and an integrated **EduPredict Assistant**.
+EduPredict is a Flask-based educational analytics prototype that combines machine learning, student/teacher workflows, persistent SQLite storage, performance prediction, early-warning risk classification, learning profiles, anomaly detection, personalized recommendations, analytics, and an integrated **EduPredict Assistant**.
 
 > **Academic / Responsible-Use Notice:** The included 1,500-record dataset is synthetic and is provided for academic demonstration and software testing. Model predictions are decision-support signals and should not be treated as definitive judgments of student ability or used as the sole basis for academic decisions.
 
