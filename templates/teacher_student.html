@@ -1,5 +1,158 @@
-{% extends 'base.html' %}{% block title %}Student Details{% endblock %}{% block content %}<div class="page-head"><div><h1 class="page-title">{{student.full_name}}</h1><p class="page-subtitle">{{student.student_code}} · {{student.course or 'Course not set'}} · Year {{student.year or '—'}} · {{student.email or 'No email'}}</p></div><a class="btn btn-secondary" href="{{url_for('teacher_dashboard')}}">← Back</a></div>
-<div class="two-col"><section class="card"><h2>AI Prediction Trend</h2><div id="detailTrend" class="chart-container" aria-label="AI Prediction Trend chart"></div></section><section class="card"><h2>Record Intervention</h2><form method="POST" action="{{url_for('add_intervention',student_id=student.id)}}"><input type="hidden" name="_csrf" value="{{csrf_token}}"><label>Status<select name="status"><option>Open</option><option>In Progress</option><option>Resolved</option></select></label><label>Teacher note<textarea name="note" rows="5" required placeholder="Describe the support action, concern or follow-up…"></textarea></label><button class="btn btn-primary">Save Intervention</button></form></section></div>
-<section class="card"><h2>Latest Live Inputs</h2>{% if records %}{% set r=records[0] %}<div class="ai-grid">{% for c in ['attendance_percentage','study_hours_per_week','previous_exam_score','assignment_score','internal_assessment_score','sleep_hours'] %}<div><strong>{{c.replace('_',' ')|title}}</strong><span>{{r[c]}}</span></div>{% endfor %}<div><strong>Parental Support</strong><span>{{['Low','Medium','High'][r.parental_support]}}</span></div><div><strong>Extracurricular</strong><span>{{'Yes' if r.extracurricular_activities else 'No'}}</span></div></div>{% else %}<p class="muted">No performance data.</p>{% endif %}</section>
-<section class="card"><h2>Prediction History</h2><div class="table-wrap"><table class="data-table"><tr><th>Date</th><th>Score</th><th>Risk</th><th>Category</th><th>Profile</th><th>Pattern</th></tr>{% for p in predictions %}<tr><td>{{p.created_at[:19]}}</td><td>{{p.predicted_score}}</td><td>{{p.risk_probability}}%</td><td><span class="pill {{p.performance_category|lower}}">{{p.performance_category}}</span></td><td>{{p.learning_profile}}</td><td>{{'Unusual' if p.unusual_pattern else 'Normal'}}</td></tr>{% else %}<tr><td colspan="6">No predictions.</td></tr>{% endfor %}</table></div></section>
-<section class="card"><h2>Intervention History</h2>{% for n in notes %}<div class="note"><b>{{n.status}}</b><span>{{n.created_at[:16]}} · {{n.teacher_name}}</span><p>{{n.note}}</p></div>{% else %}<p class="muted">No intervention notes yet.</p>{% endfor %}</section><script>window.detailTrend={{predictions|map(attribute='predicted_score')|list|reverse|list|tojson}};window.detailTrendLabels={{predictions|map(attribute='created_at')|list|reverse|list|tojson}};</script>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Student Inspection — {{ student.full_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div style="display: flex; align-items: center; gap: 16px;">
+    <div style="width: 52px; height: 52px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 800;">
+      {{ student.full_name[0] }}
+    </div>
+    <div>
+      <h1 class="page-title">{{ student.full_name }}</h1>
+      <p class="page-subtitle">
+        <code>{{ student.student_code }}</code> • {{ student.course or 'Course not set' }} • Year {{ student.year or '—' }} • {{ student.email or 'No email' }}
+      </p>
+    </div>
+  </div>
+  <div>
+    <a class="btn btn-secondary btn-small" href="{{ url_for('teacher_dashboard') }}">
+      ← Return to Command Center
+    </a>
+  </div>
+</div>
+
+<div class="two-col">
+  <section class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h3 style="margin: 0;">📈 Performance Checkpoint Trajectory</h3>
+      <small class="muted">Historical continuous mark forecasts</small>
+    </div>
+    <div id="detailTrend" class="chart-container" aria-label="AI Prediction Trend chart"></div>
+  </section>
+
+  <section class="card">
+    <h3 style="margin-top: 0; margin-bottom: 14px;">📝 Log Teacher Intervention</h3>
+    <form method="POST" action="{{ url_for('add_intervention', student_id=student.id) }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      
+      <label>
+        Action Status
+        <select name="status">
+          <option value="Open">🟡 Open (Identified & Pending)</option>
+          <option value="In Progress">🔵 In Progress (Remedial Session Booked)</option>
+          <option value="Resolved">🟢 Resolved (Academic Improvement Confirmed)</option>
+        </select>
+      </label>
+
+      <div style="margin-bottom: 8px;">
+        <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
+          ⚡ Quick Templates:
+        </span>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px;">
+          <button type="button" class="btn btn-secondary btn-small" style="font-size: 0.78rem; padding: 4px 8px;" onclick="document.getElementById('interventionNote').value='Scheduled mandatory 1-on-1 counseling regarding sub-75% attendance cliff and consecutive class recovery plan.'; document.querySelector('select[name=status]').value='In Progress';">
+            📅 Attendance Counseling
+          </button>
+          <button type="button" class="btn btn-secondary btn-small" style="font-size: 0.78rem; padding: 4px 8px;" onclick="document.getElementById('interventionNote').value='Assigned peer tutor and remedial problem sets targeting core foundational gaps in prior assessments.'; document.querySelector('select[name=status]').value='In Progress';">
+            📚 Remedial Tutoring
+          </button>
+          <button type="button" class="btn btn-secondary btn-small" style="font-size: 0.78rem; padding: 4px 8px;" onclick="document.getElementById('interventionNote').value='Signed academic contract agreeing to 15+ hours of weekly guided study and weekly check-ins.'; document.querySelector('select[name=status]').value='Open';">
+            🤝 Study Contract
+          </button>
+        </div>
+      </div>
+
+      <label>
+        Teacher Intervention Record
+        <textarea id="interventionNote" name="note" rows="4" required placeholder="Detail specific guidance, counseling, tutoring schedule, or topic areas…"></textarea>
+      </label>
+
+      <button class="btn btn-primary btn-block" style="padding: 12px; margin-top: 8px;">
+        <span>💾</span> Save Intervention Record
+      </button>
+    </form>
+  </section>
+</div>
+
+<section class="card">
+  <h3 style="margin-top: 0; margin-bottom: 16px;">🔍 Most Recent Indicator Telemetry</h3>
+  {% if records %}
+    {% set r = records[0] %}
+    <div class="ai-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+      <div><strong>Attendance</strong><span>{{ r.attendance_percentage }}%</span></div>
+      <div><strong>Weekly Study</strong><span>{{ r.study_hours_per_week }} hrs</span></div>
+      <div><strong>Prior Exam</strong><span>{{ r.previous_exam_score }} / 100</span></div>
+      <div><strong>Assignments</strong><span>{{ r.assignment_score }} / 100</span></div>
+      <div><strong>Internal Assessment</strong><span>{{ r.internal_assessment_score }} / 100</span></div>
+      <div><strong>Nightly Sleep</strong><span>{{ r.sleep_hours }} hrs</span></div>
+      <div><strong>Parental Support</strong><span>{{ ['Low', 'Medium', 'High'][r.parental_support] }}</span></div>
+      <div><strong>Extracurricular</strong><span>{{ 'Active' if r.extracurricular_activities else 'None' }}</span></div>
+    </div>
+  {% else %}
+    <p class="muted">No telemetry records logged yet for this student.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3 style="margin-top: 0; margin-bottom: 14px;">📋 Historical Model Predictions</h3>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Logged Date</th>
+          <th>Predicted Mark</th>
+          <th>Risk Probability</th>
+          <th>Performance Tier</th>
+          <th>Learner Archetype</th>
+          <th>Anomaly Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in predictions %}
+          <tr>
+            <td><code>{{ p.created_at[:19].replace('T', ' ') }}</code></td>
+            <td style="font-weight: 800; color: var(--primary);">{{ p.predicted_score }} / 100</td>
+            <td>
+              <span class="pill {% if p.risk_probability >= 50 %}low{% elif p.risk_probability >= 25 %}medium{% else %}high{% endif %}">
+                {{ p.risk_probability }}%
+              </span>
+            </td>
+            <td><span class="pill {{ p.performance_category | lower }}">{{ p.performance_category }}</span></td>
+            <td><strong>{{ p.learning_profile }}</strong></td>
+            <td>
+              <span class="pill" style="background: {% if p.unusual_pattern %}var(--rose-bg){% else %}var(--surface-subtle){% endif %}; color: {% if p.unusual_pattern %}var(--rose-text){% else %}var(--text-muted){% endif %};">
+                {{ '⚠️ Outlier' if p.unusual_pattern else 'Normal' }}
+              </span>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="6" style="text-align: center; padding: 24px;">No previous predictions.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h3 style="margin-top: 0; margin-bottom: 14px;">🗂️ Logged Interventions History</h3>
+  {% for n in notes %}
+    <div class="note" style="border-left-color: {% if n.status == 'Resolved' %}var(--emerald){% elif n.status == 'In Progress' %}var(--primary){% else %}var(--amber){% endif %};">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span class="pill {% if n.status == 'Resolved' %}high{% elif n.status == 'In Progress' %}medium{% else %}low{% endif %}">
+          {{ n.status }}
+        </span>
+        <span class="muted" style="font-size: 0.82rem;">{{ n.created_at[:16] }} • {{ n.teacher_name }}</span>
+      </div>
+      <p style="margin: 6px 0; font-size: 0.92rem; font-weight: 500;">{{ n.note }}</p>
+    </div>
+  {% else %}
+    <p class="muted">No intervention notes logged yet.</p>
+  {% endfor %}
+</section>
+
+<script>
+  window.detailTrend = {{ predictions | map(attribute='predicted_score') | list | reverse | list | tojson }};
+  window.detailTrendLabels = {{ predictions | map(attribute='created_at') | list | reverse | list | tojson }};
+</script>
+{% endblock %}

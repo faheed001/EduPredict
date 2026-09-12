@@ -1,1 +1,49 @@
-{% extends 'base.html' %}{% block title %}My Profile{% endblock %}{% block content %}<h1 class="page-title">My Profile</h1><form class="card form-card" method="POST"><input type="hidden" name="_csrf" value="{{csrf_token}}"><div class="form-row"><label>Full Name<input name="full_name" value="{{student.full_name}}" required></label><label>Student Code<input value="{{student.student_code}}" disabled></label></div><div class="form-row"><label>Email<input type="email" name="email" value="{{student.email or ''}}"></label><label>Course<input name="course" value="{{student.course or ''}}"></label></div><label>Year<input name="year" value="{{student.year or ''}}"></label><button class="btn btn-primary">Save Profile</button></form>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}My Academic Profile — EduPredict Pro{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">👤 Student Profile</h1>
+    <p class="page-subtitle">Manage personal information, degree affiliation, and contact records.</p>
+  </div>
+  <div>
+    <a href="{{ url_for('student_dashboard') }}" class="btn btn-secondary btn-small">← Back to Overview</a>
+  </div>
+</div>
+
+<form class="card form-card" method="POST" style="max-width: 760px; margin: 0 auto;">
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+
+  <div class="form-row">
+    <label>
+      Full Legal Name
+      <input name="full_name" value="{{ student.full_name }}" required>
+    </label>
+    <label>
+      Institutional Student Code (Immutable)
+      <input value="{{ student.student_code }}" disabled style="background: var(--surface-subtle); color: var(--text-muted); cursor: not-allowed;">
+    </label>
+  </div>
+
+  <div class="form-row">
+    <label>
+      University Email
+      <input type="email" name="email" value="{{ student.email or '' }}" placeholder="student@university.edu">
+    </label>
+    <label>
+      Degree / Course Stream
+      <input name="course" value="{{ student.course or '' }}" placeholder="e.g. Computer Science">
+    </label>
+  </div>
+
+  <label>
+    Current Academic Year
+    <input name="year" value="{{ student.year or '' }}" placeholder="e.g. 3">
+  </label>
+
+  <button class="btn btn-primary" style="margin-top: 10px; padding: 12px 24px;">
+    <span>💾</span> Save Profile Changes
+  </button>
+</form>
+{% endblock %}

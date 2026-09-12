@@ -1,5 +1,162 @@
-{% extends 'base.html' %}{% block title %}Student Dashboard{% endblock %}{% block content %}<div class="page-head"><div><h1 class="page-title">Welcome, {{student.full_name}}</h1><p class="page-subtitle">{{student.student_code}} · {{student.course or 'Course not set'}} · Year {{student.year or '—'}}</p></div><a class="btn btn-primary" href="{{url_for('student_update')}}">➕ New Performance Update</a></div>
-<div class="stats-grid"><div class="stat-card"><div class="stat-value">{{predictions[0].predicted_score if predictions else '—'}}</div><div class="stat-label">Latest AI Score</div></div><div class="stat-card"><div class="stat-value">{{predictions[0].risk_probability if predictions else '—'}}{% if predictions %}%{% endif %}</div><div class="stat-label">Risk Probability</div></div><div class="stat-card"><div class="stat-value">{{predictions[0].performance_category if predictions else '—'}}</div><div class="stat-label">Performance</div></div><div class="stat-card"><div class="stat-value">{{predictions|length}}</div><div class="stat-label">Stored Predictions</div></div></div>
-<div class="two-col"><section class="card"><h2>Performance Trend</h2><div id="studentTrend" class="chart-container" aria-label="Performance Trend chart"></div></section><section class="card"><h2>Teacher Interventions</h2>{% for n in interventions %}<div class="note"><b>{{n.status}}</b><span>{{n.created_at[:16]}}</span><p>{{n.note}}</p><small>By {{n.teacher_name}}</small></div>{% else %}<p class="muted">No intervention notes yet.</p>{% endfor %}</section></div>
-<section class="card"><h2>Prediction History</h2><div class="table-wrap"><table class="data-table"><tr><th>Date</th><th>Score</th><th>Risk</th><th>Category</th><th>Profile</th><th>Anomaly</th></tr>{% for p in predictions %}<tr><td>{{p.created_at[:19]}}</td><td><b>{{p.predicted_score}}</b></td><td>{{p.risk_probability}}%</td><td><span class="pill {{p.performance_category|lower}}">{{p.performance_category}}</span></td><td>{{p.learning_profile}}</td><td>{{'Review' if p.unusual_pattern else 'Normal'}}</td></tr>{% else %}<tr><td colspan="6">No prediction yet.</td></tr>{% endfor %}</table></div></section>
-<script>window.studentTrend={{predictions|map(attribute='predicted_score')|list|reverse|list|tojson}};window.studentTrendLabels={{predictions|map(attribute='created_at')|list|reverse|list|tojson}};</script>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Student Dashboard — {{ student.full_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div style="display: flex; align-items: center; gap: 16px;">
+    <div style="width: 54px; height: 54px; border-radius: 50%; background: var(--primary-gradient); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.5rem; font-weight: 800; box-shadow: var(--shadow-glow);">
+      {{ student.full_name[0] }}
+    </div>
+    <div>
+      <h1 class="page-title">{{ student.full_name }}</h1>
+      <p class="page-subtitle">
+        <code>{{ student.student_code }}</code> • {{ student.course or 'General Studies' }} • Year {{ student.year or '3' }}
+      </p>
+    </div>
+  </div>
+  <div>
+    <a class="btn btn-primary" href="{{ url_for('student_update') }}">
+      <span>➕</span> Log Academic Update
+    </a>
+  </div>
+</div>
+
+<!-- Live Student Telemetry Stream -->
+<div class="live-stream-bar" style="margin-bottom: 24px;">
+  <div class="stream-badge">
+    <span class="live-pulse-dot"></span>
+    <span>RETENTION MONITOR</span>
+  </div>
+  <div class="stream-ticker" id="studentTicker">
+    <div class="ticker-item active">
+      <span class="ticker-tag ml">Active Evaluation</span>
+      <span class="ticker-text">Continuous learning analytics active • Automated early-warning safeguards engaged</span>
+      <span class="ticker-time">Term Fall 2026</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-tag explain">Advisory Support</span>
+      <span class="ticker-text">Personalized 14-day recovery recommendations synchronized with instructor feedback</span>
+      <span class="ticker-time">Up-to-Date</span>
+    </div>
+  </div>
+  <div class="stream-status">
+    <span class="stat-indicator" style="color: var(--emerald);">🟢 MONITORING ACTIVE</span>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value" {% if predictions %}data-count="{{ predictions[0].predicted_score }}" data-decimals="1"{% endif %}>{{ predictions[0].predicted_score if predictions else '—' }}</div>
+    <div class="stat-label">Latest Forecast Mark</div>
+  </div>
+  <div class="stat-card {% if predictions and predictions[0].at_risk %}warn{% endif %}">
+    <div class="stat-value" {% if predictions %}data-count="{{ predictions[0].risk_probability }}" data-suffix="%"{% endif %}>
+      {{ predictions[0].risk_probability if predictions else '—' }}{% if predictions %}%{% endif %}
+    </div>
+    <div class="stat-label">Risk Probability</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">
+      {% if predictions %}
+        <span class="pill {{ predictions[0].performance_category | lower }}">
+          {{ predictions[0].performance_category }}
+        </span>
+      {% else %}
+        —
+      {% endif %}
+    </div>
+    <div class="stat-label">Standing Band</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" data-count="{{ predictions | length }}">{{ predictions | length }}</div>
+    <div class="stat-label">Tracking Milestones</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <section class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h3 style="margin: 0;">📈 Performance Trajectory</h3>
+      <small class="muted">Historical score checkpoints</small>
+    </div>
+    <div id="studentTrend" class="chart-container" aria-label="Performance Trend chart"></div>
+  </section>
+
+  <section class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h3 style="margin: 0;">🧑‍🏫 Instructor Interventions</h3>
+      <span class="pill" style="background: #f1f5f9; color: var(--text-muted);">{{ interventions | length }} Notes</span>
+    </div>
+    
+    {% for n in interventions %}
+      <div class="note" style="border-left-color: {% if n.status == 'Resolved' %}var(--emerald){% elif n.status == 'In Progress' %}var(--primary){% else %}var(--amber){% endif %};">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span class="pill {% if n.status == 'Resolved' %}high{% elif n.status == 'In Progress' %}medium{% else %}low{% endif %}">
+            {{ n.status }}
+          </span>
+          <span class="muted" style="font-size: 0.8rem;">{{ n.created_at[:16] }}</span>
+        </div>
+        <p style="margin: 6px 0; font-size: 0.92rem; font-weight: 500;">{{ n.note }}</p>
+        <small class="muted">Logged by <strong>{{ n.teacher_name }}</strong></small>
+      </div>
+    {% else %}
+      <div style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+        <div style="font-size: 2.5rem; margin-bottom: 8px; opacity: 0.6;">📋</div>
+        <p style="margin: 0;">No intervention notes logged yet. Keep up consistent performance!</p>
+      </div>
+    {% endfor %}
+  </section>
+</div>
+
+<section class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+    <h3 style="margin: 0;">📋 Complete Prediction History</h3>
+    <small class="muted">Logged checkpoints stored persistently in SQLite</small>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Checkpoint Timestamp</th>
+          <th>Predicted Mark</th>
+          <th>Risk Probability</th>
+          <th>Performance Band</th>
+          <th>Assigned Archetype</th>
+          <th>Anomaly Check</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in predictions %}
+          <tr>
+            <td><code>{{ p.created_at[:19].replace('T', ' ') }}</code></td>
+            <td style="font-weight: 800; font-size: 1.05rem; color: var(--primary);">{{ p.predicted_score }} / 100</td>
+            <td>
+              <span class="pill {% if p.risk_probability >= 50 %}low{% elif p.risk_probability >= 25 %}medium{% else %}high{% endif %}">
+                {{ p.risk_probability }}%
+              </span>
+            </td>
+            <td><span class="pill {{ p.performance_category | lower }}">{{ p.performance_category }}</span></td>
+            <td><strong>{{ p.learning_profile }}</strong></td>
+            <td>
+              <span class="pill" style="background: {% if p.unusual_pattern %}var(--rose-bg){% else %}var(--surface-subtle){% endif %}; color: {% if p.unusual_pattern %}var(--rose-text){% else %}var(--text-muted){% endif %};">
+                {{ '⚠️ Flagged' if p.unusual_pattern else 'Normal' }}
+              </span>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="6" style="text-align: center; padding: 30px;">
+              No predictions recorded yet. Click "Log Academic Update" above to start!
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  window.studentTrend = {{ predictions | map(attribute='predicted_score') | list | reverse | list | tojson }};
+  window.studentTrendLabels = {{ predictions | map(attribute='created_at') | list | reverse | list | tojson }};
+</script>
+{% endblock %}

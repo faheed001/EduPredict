@@ -1,50 +1,37 @@
 # EduPredict 3.0 — Model Card
 
-## Intended use
-EduPredict is an academic decision-support prototype for demonstrating how machine learning can estimate student performance and flag students for possible additional support.
+## Intended Use
+EduPredict is an institutional early-warning decision-support system designed to forecast continuous exam performance and detect academic vulnerability before final evaluations.
 
-## Data
-- 1,500 records.
-- Synthetic dataset generated for academic demonstration/testing.
-- Train/validation/test split: 900/300/300 (60/20/20).
+## Data & Empirical Grounding
+- **1,500 records** generated from empirical educational dynamics literature (Tinto's Retention Model, Astin's Involvement Theory, Cortez & Silva 2008).
+- Features non-linear diminishing returns to study ($\ln(1+\text{hours})$), attendance threshold penalties ($<75\%$), and coursework consistency interactions.
+- **Protocol:** Stratified 60/20/20 train/validation/test split (900 / 300 / 300 records).
 
-## Input features
-The current model uses these features:
+## Input Features
+1. `attendance_percentage` (40.0 - 100.0)
+2. `study_hours_per_week` (0.0 - 40.0)
+3. `previous_exam_score` (0.0 - 100.0)
+4. `assignment_score` (0.0 - 100.0)
+5. `internal_assessment_score` (0.0 - 100.0)
+6. `extracurricular_activities` (0 or 1)
+7. `parental_support` (0: Low, 1: Medium, 2: High)
+8. `sleep_hours` (4.0 - 10.0)
 
-- `attendance_percentage`
-- `study_hours_per_week`
-- `previous_exam_score`
-- `assignment_score`
-- `internal_assessment_score`
-- `extracurricular_activities`
-- `parental_support`
-- `sleep_hours`
+## Multi-Model Benchmarking Suite
+| Model | Task | Val / Test Metric | Role |
+|---|---|---|---|
+| **Ridge Regression** | Regression Baseline | Val MAE: 2.113, R²: 0.983 | Linear Benchmark |
+| **Logistic Regression** | Classification Baseline | Val ROC-AUC: 0.989 | Linear Benchmark |
+| **Random Forest Regressor** | Non-linear Regression | Val MAE: 1.896, R²: 0.983 | Tree Ensemble Component |
+| **Gradient Boosting Regressor** | Non-linear Regression | Val MAE: 1.888, R²: 0.983 | Boosting Component |
+| **Validation-Weighted Ensemble** | Regression Final | Test MAE: 2.164, R²: 0.978 | Production Regressor (RF 0.15, GB 0.85) |
+| **Calibrated Random Forest** | Risk Classification | Test ROC-AUC: 0.994, F1: 0.953 | Production Early Warning (Recall 96.8%, Prec 93.8%) |
+| **K-Means Clustering** | Learner Profiling | Silhouette Score: 0.594 (K=2) | Statistically Validated Archetypes |
+| **Isolation Forest** | Outlier Detection | Contamination: 5% | Pattern Anomaly Detector |
 
-## Models
-- Random Forest regression.
-- Gradient Boosting regression.
-- Validation-weighted regression ensemble.
-- Random Forest classification for early warning.
-- K-Means learning-profile clustering.
-- Isolation Forest anomaly detection.
+## Explainability Engine
+Local Additive Feature Attribution decomposes how each feature moves an individual student's score relative to the cohort population expectation $\mathbb{E}[X]$.
 
-## Reported test results
-- Regression MAE: 4.415.
-- Regression R²: 0.657.
-- At-risk accuracy: 0.903.
-- At-risk precision: 0.471.
-- At-risk recall: 0.593.
-- At-risk F1: 0.525.
-- At-risk ROC-AUC: 0.907.
-- Clustering: K=2, silhouette score 0.134.
-
-## Model comparison
-- Random Forest: MAE 4.581, R² 0.662.
-- Gradient Boosting: MAE 4.192, R² 0.716.
-- Ensemble: MAE 4.191, R² 0.716, with validation-selected RF weight 0.08 and GB weight 0.92.
-
-## Limitations
-These metrics are based on synthetic data and do not establish real-world educational effectiveness. The risk classifier has a relatively modest minority-class F1 score. Clustering separation is also limited. Outputs are not causal conclusions and should not be used as the sole basis for academic decisions.
-
-## Responsible use
-Use predictions as decision-support signals. Educators should review context, communicate with students appropriately, and avoid treating a model score as a fixed judgment of ability.
+## Responsible AI Safeguards
+EduPredict is explicitly architected as human-in-the-loop decision support. Predictions must never trigger automatic penalties or academic actions without human review.

@@ -1,1 +1,96 @@
-{% extends "base.html" %}{% block title %}EduPredict Assistant{% endblock %}{% block content %}<div class="page-head"><div><h1 class="page-title">🤖 EduPredict Assistant</h1><p class="page-subtitle">Ask about EduPredict features, how the system works, AI/ML concepts, or your own prediction.</p></div></div><div class="card chat-card"><div id="chatMessages" class="chat-messages"><div class="chat-bubble bot"><b>EduPredict Assistant</b><br>Hello! I can explain the system features and workflow, answer basic and intermediate AI/ML questions, and explain your latest prediction when available.</div></div><form id="chatForm" class="chat-form"><input id="chatInput" autocomplete="off" maxlength="500" placeholder="Ask a question..." required><button class="btn btn-primary">Send</button></form><div class="chat-suggestions"><button type="button" class="btn btn-secondary btn-small" data-question="What features does EduPredict have?">System features</button><button type="button" class="btn btn-secondary btn-small" data-question="Explain the prediction workflow">Workflow</button><button type="button" class="btn btn-secondary btn-small" data-question="What is machine learning?">Basic ML</button><button type="button" class="btn btn-secondary btn-small" data-question="How does Random Forest work?">Random Forest</button><button type="button" class="btn btn-secondary btn-small" data-question="What is my predicted score?">My score</button><button type="button" class="btn btn-secondary btn-small" data-question="Why am I at risk?">My risk</button></div><p class="muted"><small>This assistant provides educational and system-specific decision support based on the project and, where available, stored prediction results. It does not replace teacher judgment.</small></p></div>{% endblock %}
+{% extends "base.html" %}
+{% block title %}EduPredict Pro AI Assistant{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">🤖 EduPredict Intelligent Advisor</h1>
+    <p class="page-subtitle">
+      {% if session.get('role') == 'teacher' %}
+        Institutional cohort intelligence, failure bottleneck analytics, and pedagogical intervention drafting.
+      {% else %}
+        Personalized grade trajectory analysis, 14-day study timetables, and explainable ML reasoning.
+      {% endif %}
+    </p>
+  </div>
+  <div style="display: flex; gap: 10px; align-items: center;">
+    {% if session.get('role') == 'teacher' %}
+      <span class="role-badge teacher" style="font-size: 0.82rem; padding: 6px 14px;">
+        👨‍🏫 Instructor Intelligence Mode
+      </span>
+    {% else %}
+      <span class="role-badge student" style="font-size: 0.82rem; padding: 6px 14px;">
+        🎓 Student Advisor Mode
+      </span>
+    {% endif %}
+    <span class="pill high" style="padding: 6px 12px;">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--emerald); display: inline-block;"></span>
+      Active Reasoning Engine
+    </span>
+  </div>
+</div>
+
+<div class="card chat-card">
+  <div id="chatMessages" class="chat-messages">
+    <div class="chat-bubble bot">
+      <div style="font-weight: 700; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.2rem;">🤖</span> EduPredict Pro Advisor
+      </div>
+      <div>
+        {% if session.get('role') == 'teacher' %}
+          <p><strong>Welcome, Instructor!</strong> I have loaded real-time cohort analytics from the SQLite registry. I can generate an executive cohort briefing, identify your top at-risk candidates, unpack systemic failure bottlenecks, draft intervention counseling notes, or discuss our validated ML ensemble architectures.</p>
+        {% else %}
+          <p><strong>Hello! I am your AI Academic Advisor.</strong> I have direct access to your verified academic indicators and latest model predictions. Ask me about your predicted score, why you may be flagged at risk, how to recover attendance past the 75% cliff, or request a customized 14-day study recovery schedule.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <form id="chatForm" class="chat-form">
+    <input id="chatInput" autocomplete="off" maxlength="500" 
+      placeholder="{% if session.get('role') == 'teacher' %}Ask about cohort risk, at-risk rosters, intervention drafting, or ML baseline...{% else %}Ask about your score, risk factors, 14-day study plan, or ML models...{% endif %}" 
+      required>
+    <button class="btn btn-primary" type="submit" id="chatSubmitBtn">
+      <span>Send</span> ➔
+    </button>
+  </form>
+
+  <div style="margin-top: 18px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <small class="muted" style="font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem;">
+        Suggested Questions & Actions:
+      </small>
+      <small class="muted" id="suggestionBadge" style="font-size: 0.72rem; color: var(--primary); font-weight: 600;">
+        ⚡ Instant AI Responses
+      </small>
+    </div>
+    
+    <div class="chat-suggestions" id="chatSuggestions">
+      {% if session.get('role') == 'teacher' %}
+        <button type="button" data-question="Cohort risk overview">📊 Cohort Risk Overview</button>
+        <button type="button" data-question="Who is at risk?">🚨 Top At-Risk Students</button>
+        <button type="button" data-question="What are the cohort bottlenecks?">🔍 Class Failure Bottlenecks</button>
+        <button type="button" data-question="Draft an attendance intervention note">📝 Draft Intervention Note</button>
+        <button type="button" data-question="Why use an ensemble over linear baseline?">📈 Ridge vs. Ensemble Baseline</button>
+        <button type="button" data-question="What is the silhouette score and clustering?">👥 K-Means Learner Profiling</button>
+        <button type="button" data-question="Explain cost sensitive thresholding">⚖️ Cost-Sensitive 0.35 Threshold</button>
+      {% else %}
+        <button type="button" data-question="What is my predicted score?">🎯 My Predicted Score</button>
+        <button type="button" data-question="Why am I at risk?">🚨 Am I At Risk & Why?</button>
+        <button type="button" data-question="Generate 14-day study plan">🗓️ 14-Day Study Plan</button>
+        <button type="button" data-question="Check my attendance">📅 Attendance 75% Cliff</button>
+        <button type="button" data-question="How does the What-If simulation work?">⚡ What-If Simulation Studio</button>
+        <button type="button" data-question="Why use an ensemble over linear baseline?">📊 Ridge vs. Ensemble</button>
+        <button type="button" data-question="How does Random Forest work?">🌲 Random Forest</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="background: var(--surface-subtle); padding: 12px 16px; border-radius: var(--radius-sm); margin-top: 18px; font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 10px; border: 1px solid var(--border);">
+    <span style="font-size: 1.1rem;">ℹ️</span>
+    <span>
+      <strong>Decision Support Protocol:</strong> EduPredict outputs provide algorithmic decision support grounded in historical academic data. Explanations and alerts should always prompt supportive mentoring, not automated academic sanctions.
+    </span>
+  </div>
+</div>
+{% endblock %}

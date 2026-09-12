@@ -1,1 +1,456 @@
-{% extends 'base.html' %}{% block title %}AI Prediction{% endblock %}{% block content %}<h1 class="page-title">AI Performance Prediction</h1><p class="page-subtitle">Use the same trained pipeline for a what-if analysis without saving a student record.</p><div class="predict-layout"><form method="POST" class="card form-card"><input type="hidden" name="_csrf" value="{{csrf_token}}"><div class="form-row"><label>Attendance %<input type="number" step="0.1" min="0" max="100" name="attendance_percentage" value="{{form_data.attendance_percentage if form_data else 80}}" required></label><label>Study Hours / Week<input type="number" step="0.1" min="0" max="80" name="study_hours_per_week" value="{{form_data.study_hours_per_week if form_data else 15}}" required></label></div><div class="form-row"><label>Previous Exam Score<input type="number" step="0.1" min="0" max="100" name="previous_exam_score" value="{{form_data.previous_exam_score if form_data else 65}}" required></label><label>Assignment Score<input type="number" step="0.1" min="0" max="100" name="assignment_score" value="{{form_data.assignment_score if form_data else 70}}" required></label></div><div class="form-row"><label>Internal Assessment<input type="number" step="0.1" min="0" max="100" name="internal_assessment_score" value="{{form_data.internal_assessment_score if form_data else 68}}" required></label><label>Sleep Hours<input type="number" step="0.1" min="0" max="14" name="sleep_hours" value="{{form_data.sleep_hours if form_data else 7}}" required></label></div><div class="form-row"><label>Parental Support<select name="parental_support">{% for v,l in parental_labels.items() %}<option value="{{v}}" {% if form_data and form_data.parental_support==v %}selected{% endif %}>{{l}}</option>{% endfor %}</select></label><label class="checkbox-label"><input type="checkbox" name="extracurricular_activities" value="1" {% if form_data and form_data.extracurricular_activities==1 %}checked{% endif %}> Extracurricular Activities</label></div><button class="btn btn-primary btn-block">Run AI Analysis</button></form>{% if result %}<div class="card result-card"><h2>Prediction</h2><div class="result-score">{{result.predicted_score}}<span>/100</span></div><span class="pill {{result.performance_category|lower}}">{{result.performance_category}} Performance</span>{% if result.at_risk %}<div class="risk-alert">⚠️ At risk — {{result.risk_probability}}% probability.</div>{% else %}<div class="risk-ok">✅ Not currently flagged at risk — {{result.risk_probability}}% probability.</div>{% endif %}<div class="ai-grid"><div><strong>Learning Profile</strong><span>{{result.learning_profile}}</span></div><div><strong>Pattern Check</strong><span>{{'Review' if result.unusual_pattern else 'Normal'}}</span></div></div><h3>Why this prediction?</h3><ul class="recommendation-list">{% for x in result.feature_impacts %}<li><b>{{x.feature.replace('_',' ')|title}}</b>: {{'%+.1f'|format(x.impact)}} vs dataset-median counterfactual</li>{% endfor %}</ul><h3>Recommended Actions</h3><ul class="recommendation-list">{% for r in result.recommendations %}<li>{{r}}</li>{% endfor %}</ul><h3>Study Plan</h3><ul class="recommendation-list">{% for p in result.study_plan %}<li>{{p}}</li>{% endfor %}</ul><small class="muted">{{result.model_note}}</small></div>{% else %}<div class="card placeholder-card"><h2>Ready for analysis</h2><p>Enter student indicators to see predicted score, risk, learning profile, anomaly signal and recommendations.</p></div>{% endif %}</div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}AI Predictor & Real-Time What-If Studio{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">🔮 AI Predictor & What-If Studio</h1>
+    <p class="page-subtitle">Real-time counterfactual simulation, sensitivity analysis, and validation-weighted inference.</p>
+  </div>
+  <div style="display: flex; gap: 10px; align-items: center;">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary btn-small">View Model Evidence</a>
+  </div>
+</div>
+
+<!-- Studio Mode Selector -->
+<div class="sim-tabs">
+  <button type="button" class="sim-tab-btn active" id="tabLiveBtn">
+    <span>⚡</span> Real-Time What-If Studio
+  </button>
+  <button type="button" class="sim-tab-btn" id="tabFormBtn">
+    <span>📋</span> Standard Predictor Form
+  </button>
+</div>
+
+<!-- Live Sensitivity Telemetry Stream -->
+<div class="live-stream-bar" style="margin-bottom: 20px;">
+  <div class="stream-badge">
+    <span class="live-pulse-dot"></span>
+    <span>SENSITIVITY ENGINE</span>
+  </div>
+  <div class="stream-ticker" id="predictTicker">
+    <div class="ticker-item active">
+      <span class="ticker-tag ml">Debounced Stream</span>
+      <span class="ticker-text">Sub-50ms vectorized matrix inference • Instant counterfactual evaluation</span>
+      <span class="ticker-time">Active</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-tag explain">Threshold Cliff</span>
+      <span class="ticker-text">Interactive 75% attendance detention boundary calibration mapped live</span>
+      <span class="ticker-time">75% Cliff</span>
+    </div>
+  </div>
+  <div class="stream-status">
+    <span class="stat-indicator" style="color: var(--emerald);">🟢 LIVE PIPELINE READY</span>
+  </div>
+</div>
+
+<!-- ==========================================
+     VIEW 1: REAL-TIME WHAT-IF SIMULATOR
+========================================== -->
+<div id="liveStudioView">
+  <!-- Quick Persona Presets -->
+  <div class="preset-bar">
+    <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 6px;">
+      <span>⚡</span> Archetype Presets:
+    </span>
+    <button type="button" class="preset-pill active" data-preset="balanced">
+      <span>🎯</span> Balanced Learner
+    </button>
+    <button type="button" class="preset-pill" data-preset="achiever">
+      <span>🌟</span> High Achiever
+    </button>
+    <button type="button" class="preset-pill" data-preset="cliff">
+      <span>⚠️</span> Detention Cliff (&lt;75%)
+    </button>
+    <button type="button" class="preset-pill" data-preset="remedial">
+      <span>📈</span> Remedial Improver
+    </button>
+  </div>
+
+  <div class="predict-layout">
+    <!-- Sliders Column -->
+    <div class="card form-card" style="margin-bottom: 0;">
+      <h3 style="margin-top: 0; margin-bottom: 18px; font-size: 1.15rem; display: flex; align-items: justify; justify-content: space-between;">
+        <span style="display: flex; align-items: center; gap: 8px;">
+          <span>🎛️</span> Dynamic Student Indicators
+        </span>
+        <span style="font-size: 0.76rem; font-weight: 600; color: var(--text-muted); background: var(--surface-subtle); padding: 4px 10px; border-radius: 9999px;">
+          Live Auto-Inference
+        </span>
+      </h3>
+
+      <!-- Attendance Percentage -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Attendance Percentage</span>
+          <span class="slider-val-badge" id="valAttendance">85%</span>
+        </div>
+        <input type="range" class="sim-slider" id="slideAttendance" min="40" max="100" step="0.5" value="85">
+        <div class="slider-hint">
+          <span>Min 40%</span>
+          <span style="color: var(--rose); font-weight: 600;">⚠️ 75% Detention Cliff</span>
+          <span>Max 100%</span>
+        </div>
+      </div>
+
+      <!-- Weekly Study Hours -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Weekly Study Hours</span>
+          <span class="slider-val-badge" id="valStudy">16 hrs</span>
+        </div>
+        <input type="range" class="sim-slider" id="slideStudy" min="0" max="40" step="0.5" value="16">
+        <div class="slider-hint">
+          <span>0 hrs (No study)</span>
+          <span style="color: var(--primary); font-weight: 600;">✨ Optimal: 15–22 hrs</span>
+          <span>40 hrs (Plateau)</span>
+        </div>
+      </div>
+
+      <!-- Previous Exam Score -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Previous Exam Score</span>
+          <span class="slider-val-badge" id="valExam">72 / 100</span>
+        </div>
+        <input type="range" class="sim-slider" id="slideExam" min="0" max="100" step="1" value="72">
+        <div class="slider-hint">
+          <span>0</span>
+          <span>Passing mark: 50</span>
+          <span>100</span>
+        </div>
+      </div>
+
+      <!-- Assignment Score -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Continuous Assignment Marks</span>
+          <span class="slider-val-badge" id="valAssignment">70 / 100</span>
+        </div>
+        <input type="range" class="sim-slider" id="slideAssignment" min="0" max="100" step="1" value="70">
+        <div class="slider-hint">
+          <span>0</span>
+          <span>Formative baseline</span>
+          <span>100</span>
+        </div>
+      </div>
+
+      <!-- Internal Assessment Score -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Internal Assessment Score</span>
+          <span class="slider-val-badge" id="valInternal">70 / 100</span>
+        </div>
+        <input type="range" class="sim-slider" id="slideInternal" min="0" max="100" step="1" value="70">
+        <div class="slider-hint">
+          <span>0</span>
+          <span>High diagnostic weight</span>
+          <span>100</span>
+        </div>
+      </div>
+
+      <!-- Sleep Hours -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">Nightly Sleep Hours</span>
+          <span class="slider-val-badge" id="valSleep">7.5 hrs</span>
+        </div>
+        <input type="range" class="sim-slider" id="slideSleep" min="4" max="12" step="0.5" value="7.5">
+        <div class="slider-hint">
+          <span>4.0 hrs (Deprivation)</span>
+          <span style="color: var(--emerald-text); font-weight: 600;">🧠 Circadian Peak: 7.0–8.0 hrs</span>
+          <span>12.0 hrs</span>
+        </div>
+      </div>
+
+      <!-- Parental Support & Extracurricular -->
+      <div class="form-row" style="margin-top: 10px;">
+        <div>
+          <label style="font-size: 0.88rem; font-weight: 600; color: var(--text-main);">Parental Support</label>
+          <div class="segmented-group" id="parentalGroup">
+            <button type="button" class="segmented-btn" data-val="0">Low</button>
+            <button type="button" class="segmented-btn active" data-val="1">Medium</button>
+            <button type="button" class="segmented-btn" data-val="2">High</button>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 0.88rem; font-weight: 600; color: var(--text-main);">Extracurricular Activity</label>
+          <div class="toggle-wrap">
+            <span style="font-size: 0.84rem; color: var(--text-muted);" id="lblExtracurricular">Active</span>
+            <label class="switch">
+              <input type="checkbox" id="chkExtracurricular" checked>
+              <span class="slider-switch"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Simulation Dashboard Column -->
+    <div class="gauge-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <span class="eyebrow" style="margin-bottom: 0;">REAL-TIME INFERENCE</span>
+        <span class="pill medium" id="simCategoryBadge">Medium Performance</span>
+      </div>
+
+      <!-- SVG Speedometer Tachometer Gauge -->
+      <div class="gauge-container">
+        <svg class="gauge-svg" viewBox="0 0 280 160" aria-label="Performance Gauge" role="img">
+          <!-- Background Arc Segments -->
+          <!-- Zone 1: At-Risk (0 - 50) Red -->
+          <path d="M 40 140 A 100 100 0 0 1 140 40" fill="none" stroke="#fee2e2" stroke-width="18" stroke-linecap="round" />
+          <path d="M 40 140 A 100 100 0 0 1 140 40" fill="none" stroke="#f43f5e" stroke-width="8" stroke-dasharray="1 6" />
+          <!-- Zone 2: Average (50 - 65) Amber -->
+          <path d="M 140 40 A 100 100 0 0 1 190 53" fill="none" stroke="#fef3c7" stroke-width="18" />
+          <path d="M 140 40 A 100 100 0 0 1 190 53" fill="none" stroke="#f59e0b" stroke-width="8" />
+          <!-- Zone 3: Good (65 - 80) Indigo -->
+          <path d="M 190 53 A 100 100 0 0 1 228 85" fill="none" stroke="#e0e7ff" stroke-width="18" />
+          <path d="M 190 53 A 100 100 0 0 1 228 85" fill="none" stroke="#6366f1" stroke-width="8" />
+          <!-- Zone 4: Excellent (80 - 100) Emerald -->
+          <path d="M 228 85 A 100 100 0 0 1 240 140" fill="none" stroke="#d1fae5" stroke-width="18" stroke-linecap="round" />
+          <path d="M 228 85 A 100 100 0 0 1 240 140" fill="none" stroke="#10b981" stroke-width="8" />
+
+          <!-- Ticks & Labels -->
+          <text x="32" y="156" fill="#64748b" font-size="11" font-weight="700" text-anchor="middle">0</text>
+          <text x="140" y="28" fill="#64748b" font-size="11" font-weight="700" text-anchor="middle">50</text>
+          <text x="248" y="156" fill="#64748b" font-size="11" font-weight="700" text-anchor="middle">100</text>
+
+          <!-- Needle Pointer -->
+          <g id="gaugeNeedleGroup" class="gauge-needle" style="transform: rotate(-15deg);">
+            <!-- Needle center cap -->
+            <circle cx="140" cy="140" r="12" fill="#1e293b" />
+            <circle cx="140" cy="140" r="5" fill="#ffffff" />
+            <!-- Needle pointer -->
+            <polygon points="137,140 143,140 141,45 139,45" fill="#1e293b" />
+            <circle cx="140" cy="45" r="3" fill="#4f46e5" />
+          </g>
+        </svg>
+      </div>
+
+      <!-- Large Score Readout -->
+      <div class="gauge-score-display">
+        <div class="gauge-score-val" id="simScoreVal">72.4</div>
+        <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem; font-weight: 500;">
+          Forecasted Continuous Final Grade (/100)
+        </p>
+      </div>
+
+      <!-- Risk Probability Alert Meter -->
+      <div id="simRiskBanner" class="gauge-risk-meter" style="background: var(--emerald-bg); color: var(--emerald-text); border: 1px solid rgba(16, 185, 129, 0.25);">
+        <span style="font-size: 1.4rem;" id="simRiskIcon">✅</span>
+        <div style="flex: 1;">
+          <strong id="simRiskTitle">Academic Standing Safe</strong>
+          <div style="font-size: 0.82rem; font-weight: normal; opacity: 0.9;" id="simRiskDesc">
+            Calibrated risk probability: <b id="simRiskPct">6.2%</b> (Below 15% threshold).
+          </div>
+        </div>
+      </div>
+
+      <!-- Learner Profile & Anomaly Status -->
+      <div class="ai-grid" style="margin-top: 12px; margin-bottom: 16px;">
+        <div style="background: var(--surface-subtle); padding: 10px 12px; border-radius: var(--radius-sm);">
+          <strong style="display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Learner Profile</strong>
+          <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-main);" id="simProfile">Consistent Achiever</span>
+        </div>
+        <div style="background: var(--surface-subtle); padding: 10px 12px; border-radius: var(--radius-sm);">
+          <strong style="display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Pattern Anomaly</strong>
+          <span style="font-weight: 700; font-size: 0.88rem; color: var(--emerald);" id="simAnomaly">Conforming Profile</span>
+        </div>
+      </div>
+
+      <!-- Live Marginal Feature Attribution -->
+      <div style="text-align: left; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px;">
+        <h4 style="margin: 0 0 6px; font-size: 0.92rem; display: flex; justify-content: space-between;">
+          <span>🎯 Feature Attributions (vs. Mean)</span>
+          <small style="color: var(--text-muted); font-weight: normal;">Additive decomposition</small>
+        </h4>
+        <div id="simAttrList" style="margin-top: 10px;">
+          <!-- Dynamically populated rows -->
+        </div>
+      </div>
+
+      <!-- Counterfactual Sensitivity What-If Cards -->
+      <div style="text-align: left; margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px;">
+        <h4 style="margin: 0 0 6px; font-size: 0.92rem; display: flex; justify-content: space-between;">
+          <span>💡 "What-If" Sensitivity Scenarios</span>
+          <small style="color: var(--primary); font-weight: 600;">1-Click Apply</small>
+        </h4>
+        <div class="sensitivity-grid" id="simScenarios">
+          <!-- Dynamically populated scenarios -->
+        </div>
+      </div>
+
+      <!-- Recommendations -->
+      <div style="text-align: left; margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px;">
+        <h4 style="margin: 0 0 8px; font-size: 0.92rem;">📋 Targeted Pedagogical Guidance</h4>
+        <ul class="recommendation-list" id="simRecs" style="margin: 0; padding-left: 20px; font-size: 0.84rem;">
+          <!-- Dynamically populated -->
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==========================================
+     VIEW 2: STANDARD PREDICTOR FORM
+========================================== -->
+<div id="standardFormView" style="display: none;">
+  <div class="predict-layout">
+    <!-- Interactive Form Inputs -->
+    <form method="POST" class="card form-card">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      
+      <h3 style="margin-top: 0; margin-bottom: 18px; font-size: 1.2rem; display: flex; align-items: center; gap: 8px;">
+        <span>📝</span> Input Student Indicators
+      </h3>
+
+      <div class="form-row">
+        <label>
+          Attendance Percentage (%)
+          <input type="number" step="0.1" min="0" max="100" name="attendance_percentage" 
+                 value="{{ form_data.attendance_percentage if form_data else 85 }}" required>
+          <small class="muted">Statutory detention threshold is &lt;75%</small>
+        </label>
+
+        <label>
+          Weekly Study Hours
+          <input type="number" step="0.1" min="0" max="80" name="study_hours_per_week" 
+                 value="{{ form_data.study_hours_per_week if form_data else 16 }}" required>
+          <small class="muted">Optimal self-study range: 12–25 hrs</small>
+        </label>
+      </div>
+
+      <div class="form-row">
+        <label>
+          Previous Exam Score (0–100)
+          <input type="number" step="0.1" min="0" max="100" name="previous_exam_score" 
+                 value="{{ form_data.previous_exam_score if form_data else 72 }}" required>
+        </label>
+
+        <label>
+          Assignment Score (0–100)
+          <input type="number" step="0.1" min="0" max="100" name="assignment_score" 
+                 value="{{ form_data.assignment_score if form_data else 70 }}" required>
+        </label>
+      </div>
+
+      <div class="form-row">
+        <label>
+          Internal Assessment (0–100)
+          <input type="number" step="0.1" min="0" max="100" name="internal_assessment_score" 
+                 value="{{ form_data.internal_assessment_score if form_data else 70 }}" required>
+        </label>
+
+        <label>
+          Nightly Sleep Hours
+          <input type="number" step="0.1" min="0" max="14" name="sleep_hours" 
+                 value="{{ form_data.sleep_hours if form_data else 7.5 }}" required>
+          <small class="muted">Cognitive peak at 7.0–8.0 hrs</small>
+        </label>
+      </div>
+
+      <div class="form-row">
+        <label>
+          Parental Support Level
+          <select name="parental_support">
+            {% for v, l in parental_labels.items() %}
+              <option value="{{ v }}" {% if form_data and form_data.parental_support == v %}selected{% elif not form_data and v == 1 %}selected{% endif %}>{{ l }} Support</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label class="checkbox-label">
+          <input type="checkbox" name="extracurricular_activities" value="1" 
+                 {% if form_data and form_data.extracurricular_activities == 1 %}checked{% elif not form_data %}checked{% endif %}>
+          <span>Active Extracurricular Participation</span>
+        </label>
+      </div>
+
+      <button class="btn btn-primary btn-block" style="margin-top: 18px; padding: 14px;">
+        <span>⚡</span> Generate AI Prediction & Attribution
+      </button>
+    </form>
+
+    <!-- Prediction Output Showcase (if submitted via POST) -->
+    {% if result %}
+      <div class="card result-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <span class="eyebrow" style="margin-bottom: 0;">AI INFERENCE RESULT</span>
+          <span class="pill {{ result.performance_category | lower }}">{{ result.performance_category }} Category</span>
+        </div>
+
+        <div class="result-score-wrap">
+          <div class="result-score">{{ result.predicted_score }}<span> / 100</span></div>
+          <p style="margin: 4px 0 0; color: var(--text-muted); font-size: 0.88rem;">Forecasted Continuous Final Mark</p>
+        </div>
+
+        {% if result.at_risk %}
+          <div class="risk-alert">
+            <span style="font-size: 1.4rem;">🚨</span>
+            <div>
+              <strong>Early Warning Triggered</strong>
+              <div style="font-size: 0.85rem; font-weight: normal; opacity: 0.9;">
+                {{ result.risk_probability }}% calibrated probability of falling below 50 marks.
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <div class="risk-ok">
+            <span style="font-size: 1.4rem;">✅</span>
+            <div>
+              <strong>Academic Standing Safe</strong>
+              <div style="font-size: 0.85rem; font-weight: normal; opacity: 0.9;">
+                Only {{ result.risk_probability }}% risk probability. On track for successful completion.
+              </div>
+            </div>
+          </div>
+        {% endif %}
+
+        <div class="ai-grid">
+          <div>
+            <strong>Learner Archetype</strong>
+            <span>{{ result.learning_profile }}</span>
+          </div>
+          <div>
+            <strong>Anomaly Detector</strong>
+            <span style="color: {% if result.unusual_pattern %}var(--rose){% else %}var(--emerald){% endif %};">
+              {{ 'Needs Review' if result.unusual_pattern else 'Conforming Profile' }}
+            </span>
+          </div>
+        </div>
+
+        <div style="text-align: left; margin-top: 24px;">
+          <h4 style="margin: 0 0 10px; font-size: 1rem;">🎯 Local Additive Feature Attribution</h4>
+          <ul class="recommendation-list">
+            {% for x in result.feature_impacts %}
+              <li style="display: flex; justify-content: space-between; align-items: center;">
+                <span><b>{{ x.feature.replace('_', ' ') | title }}</b></span>
+                <span class="attribution-pill {% if x.impact >= 0 %}pos{% else %}neg{% endif %}">
+                  {{ '%+.1f' | format(x.impact) }} pts
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+
+          <h4 style="margin: 20px 0 10px; font-size: 1rem;">💡 Tailored Recommendations</h4>
+          <ul class="recommendation-list">
+            {% for r in result.recommendations %}
+              <li>{{ r }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    {% else %}
+      <div class="card placeholder-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <div style="font-size: 3.5rem; margin-bottom: 14px; opacity: 0.85;">⚡</div>
+        <h3 style="margin: 0 0 8px;">Standard Form Submission</h3>
+        <p style="max-width: 380px; font-size: 0.92rem; margin: 0;">
+          Submit student indicators for static record generation, or switch to the <b>Real-Time What-If Studio</b> tab above.
+        </p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

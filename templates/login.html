@@ -1,1 +1,50 @@
-{% extends 'base.html' %}{% block title %}Login{% endblock %}{% block content %}<div class="auth-card card"><h1>🔐 Sign in</h1><p class="muted">Use a student or teacher account.</p><form method="POST"><input type="hidden" name="_csrf" value="{{csrf_token}}"><label>Username<input name="username" autocomplete="username" required></label><label>Password<input type="password" name="password" autocomplete="current-password" required></label><button class="btn btn-primary btn-block">Login</button></form><div class="demo-box"><b>Demo</b><br>Teacher: <code>teacher / teacher123</code><br>Student: <code>student / student123</code></div><p class="muted">New student? <a href="{{url_for('register')}}">Create an account</a></p></div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Sign In — EduPredict Pro{% endblock %}
+
+{% block content %}
+<div class="auth-card card">
+  <div style="text-align: center; margin-bottom: 24px;">
+    <div class="brand-icon" style="margin: 0 auto 12px; width: 46px; height: 46px; font-size: 1.4rem;">⚡</div>
+    <h1 style="font-size: 1.8rem; margin: 0 0 6px;">Sign in to EduPredict</h1>
+    <p class="page-subtitle" style="margin: 0;">Access institutional student and instructor workflows.</p>
+  </div>
+
+  <form method="POST">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+
+    <label>
+      Username
+      <input id="loginUsername" name="username" autocomplete="username" placeholder="e.g. teacher or student" required>
+    </label>
+
+    <label>
+      Password
+      <input id="loginPassword" type="password" name="password" autocomplete="current-password" placeholder="••••••••" required>
+    </label>
+
+    <button class="btn btn-primary btn-block" style="padding: 13px; font-size: 1rem; margin-top: 8px;">
+      <span>Sign In</span> ➔
+    </button>
+  </form>
+
+  <div class="demo-box">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <strong style="color: var(--text-main); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">
+        ⚡ Instant Demo Access:
+      </strong>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+      <button type="button" class="btn btn-secondary btn-small" onclick="document.getElementById('loginUsername').value='teacher'; document.getElementById('loginPassword').value='teacher123';">
+        👨‍🏫 Fill Teacher
+      </button>
+      <button type="button" class="btn btn-secondary btn-small" onclick="document.getElementById('loginUsername').value='student'; document.getElementById('loginPassword').value='student123';">
+        🎓 Fill Student
+      </button>
+    </div>
+  </div>
+
+  <p class="muted" style="text-align: center; margin-top: 22px; font-size: 0.9rem;">
+    New student on campus? <a href="{{ url_for('register') }}" style="color: var(--primary); font-weight: 600; text-decoration: none;">Create an account</a>
+  </p>
+</div>
+{% endblock %}

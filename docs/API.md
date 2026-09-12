@@ -30,7 +30,20 @@ Example request:
 {"message":"What features does EduPredict have?"}
 ```
 
-Returns JSON containing the assistant answer and, where applicable, student-specific context.
+Returns structured JSON containing:
+- `answer`: Markdown-formatted explanation, rich tabular breakdown, or pedagogical action plan.
+- `suggestions`: Array of contextually relevant follow-up questions tailored to the query and role.
+- `role`: Current user authentication context (`"student"` or `"teacher"`).
+
+Example response:
+
+```json
+{
+  "answer": "### 🎯 Your Real-Time Academic Scorecard\n\n- **Predicted Score:** `78.4 / 100`...",
+  "suggestions": ["Why am I at risk?", "Generate 14-day study plan", "What if I study 5 more hours?"],
+  "role": "student"
+}
+```
 
 ## Student update
 

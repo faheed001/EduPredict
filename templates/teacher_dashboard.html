@@ -1,4 +1,169 @@
-{% extends 'base.html' %}{% block title %}Teacher Dashboard{% endblock %}{% block content %}<div class="page-head"><div><h1 class="page-title">Teacher Command Center</h1><p class="page-subtitle">Live monitoring of all 1,500 imported dataset students, AI risk alerts and intervention tracking.</p></div><div><a class="btn btn-secondary" href="{{url_for('export_csv')}}">⬇ Export CSV</a> <a class="btn btn-primary" href="{{url_for('add_student')}}">➕ Add Student</a></div></div>
-<div class="stats-grid"><div class="stat-card"><div class="stat-value">{{stats.total or 0}}</div><div class="stat-label">Students Loaded</div></div><div class="stat-card"><div class="stat-value">{{(stats.avg or 0)|round(1)}}</div><div class="stat-label">Average Predicted Score</div></div><div class="stat-card warn"><div class="stat-value">{{stats.risk or 0}}</div><div class="stat-label">At-Risk Students</div></div><div class="stat-card warn"><div class="stat-value">{{stats.unusual or 0}}</div><div class="stat-label">Unusual Patterns</div></div></div>
-<section class="card"><div class="toolbar"><input id="studentSearch" placeholder="Search by name, code or course…"><select id="riskFilter"><option value="">All risk levels</option><option value="risk">At risk</option><option value="safe">Not at risk</option><option value="none">No prediction</option></select></div><div class="table-wrap"><table class="data-table" id="studentTable"><thead><tr><th>Student</th><th>Code</th><th>Course</th><th>AI Score</th><th>Risk</th><th>Category</th><th>Profile</th><th>Action</th></tr></thead><tbody>{% for s in students %}<tr data-search="{{(s.full_name ~ ' ' ~ s.student_code ~ ' ' ~ (s.course or ''))|lower}}" data-risk="{{'risk' if s.at_risk else ('safe' if s.predicted_score is not none else 'none')}}"><td><b>{{s.full_name}}</b></td><td>{{s.student_code}}</td><td>{{s.course or '—'}}</td><td>{{s.predicted_score or '—'}}</td><td>{{s.risk_probability ~ '%' if s.risk_probability is not none else '—'}}</td><td>{% if s.performance_category %}<span class="pill {{s.performance_category|lower}}">{{s.performance_category}}</span>{% else %}—{% endif %}</td><td>{{s.learning_profile or '—'}}</td><td><a class="btn btn-small" href="{{url_for('teacher_student',student_id=s.id)}}">View</a></td></tr>{% endfor %}</tbody></table></div></section>
-<section class="card"><h2>System Prediction Activity</h2><div id="teacherTrend" class="chart-container" aria-label="System Prediction Activity chart"></div></section><script>window.teacherTrend={{trend|map(attribute='avg_score')|list|tojson}};window.teacherTrendLabels={{trend|map(attribute='day')|list|tojson}};</script>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Teacher Command Center — Cohort Monitoring{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">👨‍🏫 Instructor Command Center</h1>
+    <p class="page-subtitle">Real-time cohort monitoring, early-warning risk screening, and intervention management.</p>
+  </div>
+  <div style="display: flex; gap: 10px;">
+    <a class="btn btn-secondary" href="{{ url_for('export_csv') }}">
+      <span>📥</span> Export CSV Dataset
+    </a>
+    <a class="btn btn-primary" href="{{ url_for('add_student') }}">
+      <span>➕</span> Enroll New Student
+    </a>
+  </div>
+</div>
+
+<!-- Live Cohort Telemetry Stream -->
+<div class="live-stream-bar" style="margin-bottom: 24px;">
+  <div class="stream-badge">
+    <span class="live-pulse-dot"></span>
+    <span>COHORT TELEMETRY</span>
+  </div>
+  <div class="stream-ticker" id="teacherTicker">
+    <div class="ticker-item active">
+      <span class="ticker-tag early-warning">Early Warning</span>
+      <span class="ticker-text">{{ stats.risk or 0 }} students currently flagged below retention threshold</span>
+      <span class="ticker-time">Continuous Monitoring</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-tag ml">Active Roster</span>
+      <span class="ticker-text">{{ stats.total or 0 }} student profiles indexed • Mean cohort mark: {{ (stats.avg or 0) | round(1) }}/100</span>
+      <span class="ticker-time">SQLite Synced</span>
+    </div>
+    <div class="ticker-item">
+      <span class="ticker-tag explain">Intervention</span>
+      <span class="ticker-text">Counseling protocols ready • Automated guidance templates available</span>
+      <span class="ticker-time">Ready</span>
+    </div>
+  </div>
+  <div class="stream-status">
+    <span class="stat-indicator" style="color: var(--emerald);">🟢 LIVE COHORT SYNC</span>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value" data-count="{{ stats.total or 0 }}">{{ stats.total or 0 }}</div>
+    <div class="stat-label">Enrolled Cohort Count</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" data-count="{{ (stats.avg or 0) | round(1) }}" data-decimals="1">{{ (stats.avg or 0) | round(1) }}</div>
+    <div class="stat-label">Cohort Mean Score</div>
+  </div>
+  <div class="stat-card warn">
+    <div class="stat-value" data-count="{{ stats.risk or 0 }}">{{ stats.risk or 0 }}</div>
+    <div class="stat-label">Vulnerable / At-Risk</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" data-count="{{ stats.unusual or 0 }}">{{ stats.unusual or 0 }}</div>
+    <div class="stat-label">Pattern Outliers</div>
+  </div>
+</div>
+
+<section class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h3 style="margin: 0;">Cohort Roster & Early-Warning Roster</h3>
+    <small class="muted">Live search across 1,500 records with instant client filtering</small>
+  </div>
+
+  <div class="toolbar" style="margin-bottom: 10px;">
+    <input id="studentSearch" placeholder="🔍 Search student by name, ID code, or course program…">
+    <select id="riskFilter">
+      <option value="">All Academic Standings</option>
+      <option value="risk">⚠️ Flagged At-Risk Only</option>
+      <option value="safe">✅ On-Track Students</option>
+      <option value="none">Awaiting Initial Benchmark</option>
+    </select>
+  </div>
+
+  <div class="quick-filter-pills" style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+    <button type="button" class="preset-pill active" onclick="document.getElementById('riskFilter').value=''; document.getElementById('riskFilter').dispatchEvent(new Event('change')); this.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active')); this.classList.add('active');">
+      👥 All Cohort ({{ stats.total or 0 }})
+    </button>
+    <button type="button" class="preset-pill" onclick="document.getElementById('riskFilter').value='risk'; document.getElementById('riskFilter').dispatchEvent(new Event('change')); this.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active')); this.classList.add('active');" style="color: var(--rose); border-color: rgba(244, 63, 94, 0.3);">
+      🚨 Flagged At-Risk ({{ stats.risk or 0 }})
+    </button>
+    <button type="button" class="preset-pill" onclick="document.getElementById('riskFilter').value='safe'; document.getElementById('riskFilter').dispatchEvent(new Event('change')); this.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active')); this.classList.add('active');" style="color: var(--emerald); border-color: rgba(16, 185, 129, 0.3);">
+      ✅ On-Track Students
+    </button>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table" id="studentTable">
+      <thead>
+        <tr>
+          <th>Student Name</th>
+          <th>Student Code</th>
+          <th>Course Stream</th>
+          <th>Predicted Mark</th>
+          <th>Risk Probability</th>
+          <th>Performance Tier</th>
+          <th>Assigned Archetype</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in students %}
+          <tr data-search="{{ (s.full_name ~ ' ' ~ s.student_code ~ ' ' ~ (s.course or '')) | lower }}" 
+              data-risk="{{ 'risk' if s.at_risk else ('safe' if s.predicted_score is not none else 'none') }}">
+            <td>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(79, 70, 229, 0.1); color: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">
+                  {{ s.full_name[0] }}
+                </div>
+                <b>{{ s.full_name }}</b>
+              </div>
+            </td>
+            <td><code>{{ s.student_code }}</code></td>
+            <td style="color: var(--text-muted);">{{ s.course or '—' }}</td>
+            <td style="font-weight: 800; font-size: 1rem; color: var(--primary);">
+              {{ s.predicted_score or '—' }}
+            </td>
+            <td>
+              {% if s.risk_probability is not none %}
+                <span class="pill {% if s.risk_probability >= 50 %}low{% elif s.risk_probability >= 25 %}medium{% else %}high{% endif %}">
+                  {{ s.risk_probability }}%
+                </span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.performance_category %}
+                <span class="pill {{ s.performance_category | lower }}">{{ s.performance_category }}</span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <small style="font-weight: 600; color: var(--text-main);">{{ s.learning_profile or '—' }}</small>
+            </td>
+            <td style="text-align: right;">
+              <a class="btn btn-secondary btn-small" href="{{ url_for('teacher_student', student_id=s.id) }}">
+                Inspect Profile →
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h3 style="margin: 0;">📊 Institutional Scoring Activity Trajectory</h3>
+    <small class="muted">Temporal cohort moving average</small>
+  </div>
+  <div id="teacherTrend" class="chart-container" aria-label="System Prediction Activity chart"></div>
+</section>
+
+<script>
+  window.teacherTrend = {{ trend | map(attribute='avg_score') | list | tojson }};
+  window.teacherTrendLabels = {{ trend | map(attribute='day') | list | tojson }};
+</script>
+{% endblock %}

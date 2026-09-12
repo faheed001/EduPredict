@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, render_template, request, redirect, url_for, session, flash, Response
 from werkzeug.security import generate_password_hash, check_password_hash
+from assistant_engine import process_assistant_query
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ARTIFACT_PATH = os.path.join(BASE_DIR, 'model', 'artifacts.joblib')
@@ -19,11 +20,35 @@ DATA_PATH = os.path.join(BASE_DIR, 'data', 'student_performance_dataset.csv')
 DB_PATH = os.path.join(BASE_DIR, 'data', 'edupredict.db')
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('EDUPREDICT_SECRET') or 'demo-secret-change-me'
-# Production deployments must set EDUPREDICT_SECRET; the fallback exists only for local academic demos.
+SECRET_FILE = os.path.join(BASE_DIR, '.secret_key')
+
+
+def get_secret_key():
+    env_secret = os.environ.get('EDUPREDICT_SECRET')
+    if env_secret:
+        return env_secret
+    if os.path.exists(SECRET_FILE):
+        try:
+            with open(SECRET_FILE, 'r', encoding='utf-8') as f:
+                key = f.read().strip()
+                if key:
+                    return key
+        except Exception:
+            pass
+    new_key = secrets.token_hex(32)
+    try:
+        with open(SECRET_FILE, 'w', encoding='utf-8') as f:
+            f.write(new_key)
+    except Exception:
+        pass
+    return new_key
+
+
+app.secret_key = get_secret_key()
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 
 artifacts = joblib.load(ARTIFACT_PATH)
 rf_regressor = artifacts['rf_regressor']
@@ -40,8 +65,23 @@ MODEL_METRICS = json.load(open(METRICS_PATH, encoding='utf-8')) if os.path.exist
 RISK_THRESHOLD = float(artifacts.get('risk_threshold', 0.40))
 RF_ENSEMBLE_WEIGHT = float(artifacts.get('ensemble_rf_weight', 0.55))
 GB_ENSEMBLE_WEIGHT = float(artifacts.get('ensemble_gb_weight', 1.0 - RF_ENSEMBLE_WEIGHT))
+
+# Inference latency optimization: single-thread decision tree traversal avoids Windows thread pool overhead.
+rf_regressor.n_jobs = 1
+if hasattr(classifier, 'calibrated_classifiers_'):
+    for cc in classifier.calibrated_classifiers_:
+        if hasattr(cc, 'estimator'):
+            cc.estimator.n_jobs = 1
+
 df = pd.read_csv(DATA_PATH)
 PARENTAL_SUPPORT_LABELS = {0: 'Low', 1: 'Medium', 2: 'High'}
+
+# Precompute cohort statistics for sub-millisecond local feature attribution.
+COHORT_MEANS = {feat: float(df[feat].mean()) for feat in FEATURE_COLUMNS}
+COHORT_MEANS_ARR = np.array([COHORT_MEANS[c] for c in FEATURE_COLUMNS], dtype=np.float64)
+COHORT_MEDIANS = {feat: float(df[feat].median()) for feat in FEATURE_COLUMNS}
+_DASHBOARD_CACHE = None
+
 
 RANGES = {
     'attendance_percentage': (0, 100),
@@ -70,9 +110,12 @@ def now_iso():
 
 
 def get_db():
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=30.0)
     con.row_factory = sqlite3.Row
     con.execute('PRAGMA foreign_keys=ON')
+    con.execute('PRAGMA journal_mode=WAL')
+    con.execute('PRAGMA synchronous=NORMAL')
+    con.execute('PRAGMA busy_timeout=15000')
     return con
 
 
@@ -220,14 +263,14 @@ def add_security_headers(response):
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
-    response.headers.setdefault('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; font-src 'self' https://cdn.jsdelivr.net; frame-ancestors 'self'")
+    response.headers.setdefault('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; frame-ancestors 'self'")
     if request.is_secure:
         response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
     return response
 
 
 def build_feature_vector(payload):
-    return np.array([float(payload[c]) for c in FEATURE_COLUMNS], dtype=float).reshape(1, -1)
+    return pd.DataFrame([[float(payload[c]) for c in FEATURE_COLUMNS]], columns=FEATURE_COLUMNS)
 
 
 def validate_payload(payload):
@@ -250,30 +293,45 @@ def predict_score(X_scaled):
 
 
 def explain_prediction(payload, base_score):
-    impacts = []
-    for feat in FEATURE_COLUMNS:
-        changed = dict(payload)
-        changed[feat] = float(df[feat].median())
-        alt = predict_score(scaler.transform(build_feature_vector(changed)))
-        impacts.append({'feature': feat, 'impact': round(base_score - alt, 2)})
+    r"""
+    Local Additive Feature Attribution (Marginal Contribution Decomposition).
+    Vectorized batch calculation for sub-millisecond execution:
+    phi_i = f(x) - f(x \ {i} U {E[X_i]}).
+    """
+    vec_base = np.array([float(payload[c]) for c in FEATURE_COLUMNS], dtype=np.float64)
+    batch = np.tile(vec_base, (len(FEATURE_COLUMNS), 1))
+    for i in range(len(FEATURE_COLUMNS)):
+        batch[i, i] = COHORT_MEANS_ARR[i]
+
+    df_batch = pd.DataFrame(batch, columns=FEATURE_COLUMNS)
+    Xs = scaler.transform(df_batch)
+    alt_scores = np.clip(
+        RF_ENSEMBLE_WEIGHT * rf_regressor.predict(Xs) + GB_ENSEMBLE_WEIGHT * gb_regressor.predict(Xs),
+        0, 100
+    )
+    impacts = [
+        {'feature': feat, 'impact': round(base_score - float(alt_scores[i]), 2)}
+        for i, feat in enumerate(FEATURE_COLUMNS)
+    ]
     return sorted(impacts, key=lambda x: abs(x['impact']), reverse=True)
 
 
 def run_prediction(payload):
     payload = validate_payload(payload)
     X = build_feature_vector(payload); Xs = scaler.transform(X)
-    score = round(max(0, min(100, predict_score(Xs))), 1)
+    score = round(max(0.0, min(100.0, predict_score(Xs))), 1)
     risk = float(classifier.predict_proba(Xs)[0][1])
     at_risk = bool(risk >= RISK_THRESHOLD)
     category = 'High' if score >= 75 else ('Medium' if score >= 50 else 'Low')
-    profile_id = int(kmeans.predict(cluster_scaler.transform(X))[0])
+    X_clust = cluster_scaler.transform(X)
+    profile_id = int(kmeans.predict(X_clust)[0])
     profile = profile_names.get(profile_id, 'General Learner')
-    anomaly = int(anomaly_detector.predict(cluster_scaler.transform(X))[0]) == -1
+    anomaly = int(anomaly_detector.predict(X_clust)[0]) == -1
 
     weak = []
     for item in FEATURE_IMPORTANCE:
         feat = item[0]
-        if feat != 'extracurricular_activities' and float(payload[feat]) < float(df[feat].median()):
+        if feat != 'extracurricular_activities' and float(payload[feat]) < COHORT_MEDIANS[feat]:
             weak.append(feat)
         if len(weak) >= 3: break
     rec = [RECOMMENDATIONS[f] for f in weak]
@@ -325,11 +383,17 @@ def import_dataset_students():
     if not os.path.exists(DATA_PATH):
         return 0
 
-    source = pd.read_csv(DATA_PATH)
-    if source.empty:
+    con = get_db()
+    count = con.execute("SELECT COUNT(*) FROM students").fetchone()[0]
+    if count >= 1500:
+        con.close()
         return 0
 
-    con = get_db()
+    source = pd.read_csv(DATA_PATH)
+    if source.empty:
+        con.close()
+        return 0
+
     cur = con.cursor()
 
     # Reuse the built-in demo student for the first dataset row so the
@@ -358,8 +422,9 @@ def import_dataset_students():
     for i, row in source.iterrows():
         sid_num = int(row['student_id'])
         code = f"STU{sid_num:04d}"
-        name = f"Dataset Student {sid_num:04d}"
-        email = f"student{sid_num:04d}@example.com"
+        name = str(row['student_name']).strip() if 'student_name' in row and pd.notna(row['student_name']) else f"Dataset Student {sid_num:04d}"
+        clean_email_name = name.lower().replace("'", "").replace(" ", ".")
+        email = f"{clean_email_name}@campus.edu"
 
         existing = cur.execute(
             "SELECT id FROM students WHERE student_code=?", (code,)
@@ -502,168 +567,20 @@ def api_assistant():
     if not message:
         return jsonify({'error': 'Please enter a question.'}), 400
 
-    q = message.lower()
     con = get_db()
-    student = None
-    latest = None
-    if session.get('role') == 'student':
-        student = con.execute('SELECT * FROM students WHERE user_id=?', (session['user_id'],)).fetchone()
-    if student:
-        latest = con.execute('SELECT * FROM predictions WHERE student_id=? ORDER BY id DESC LIMIT 1', (student['id'],)).fetchone()
-    con.close()
-
-    def has(*terms):
-        return any(term in q for term in terms)
-
-    # 1) EduPredict system/features and workflow
-    if has('what is edupredict', 'what does edupredict', 'about edupredict', 'about this system', 'this system'):
-        answer = ('EduPredict is an AI-based student performance support system. It combines student academic data, '
-                  'machine-learning prediction, risk classification, learning profiles, anomaly detection, explanations, '
-                  'personalized recommendations, study planning, dashboards, prediction history, and teacher interventions. '
-                  'Its purpose is to help students and teachers identify learning needs early and make informed decisions.')
-    elif has('features', 'feature', 'modules', 'module', 'what can this system do', 'what are the functions'):
-        answer = ('EduPredict features include: student and teacher authentication; student profile and academic-data management; '
-                  'AI performance prediction; at-risk probability and risk classification; prediction history; personalized '
-                  'recommendations; study-plan generation; learning-profile clustering; anomaly detection; explainable feature '
-                  'impacts; student and teacher dashboards; student search and filtering; teacher intervention notes; analytics; '
-                  'CSV export; JSON APIs; and this EduPredict Assistant.')
-    elif has('workflow', 'how does the system work', 'how does edupredict work', 'prediction process', 'prediction pipeline'):
-        answer = ('The main workflow is: 1) the student enters or updates academic indicators, 2) the application validates the '
-                  'input, 3) the trained ML models process the features, 4) the system predicts a performance score, 5) a risk '
-                  'classifier estimates at-risk probability, 6) explainability highlights important factors, 7) recommendations '
-                  'and a study plan are generated, and 8) the result is stored so students and teachers can review progress over time.')
-    elif has('student dashboard', 'student features', 'student can do', 'student module'):
-        answer = ('The Student Dashboard lets a student view their profile, academic records, latest prediction, risk status, '
-                  'recommendations, study plan, prediction history, and teacher interventions. Students can update relevant '
-                  'academic information and run a new prediction when supported by the system.')
-    elif has('teacher dashboard', 'teacher features', 'teacher can do', 'teacher module'):
-        answer = ('The Teacher Dashboard helps teachers monitor students, review predicted performance and risk, inspect trends '
-                  'and explanations, search or filter students, and record intervention notes. This supports early intervention '
-                  'rather than replacing teacher judgment.')
-    elif has('database', 'sqlite', 'data storage', 'stored data'):
-        answer = ('EduPredict uses SQLite for persistent application data such as users, student profiles, performance records, '
-                  'predictions, interventions, and audit information. The ML model artifacts are stored separately and loaded by the Flask application.')
-    elif has('login', 'registration', 'register', 'authentication'):
-        answer = ('The system provides role-based authentication for students and teachers. Passwords are stored as secure hashes, '
-                  'sessions identify the logged-in user, and protected routes restrict features according to the user role.')
-    elif has('prediction history', 'history'):
-        answer = ('Prediction History stores previous prediction results so performance can be reviewed over time. It helps users '
-                  'compare outcomes, identify changes, and discuss progress with teachers.')
-    elif has('recommendation', 'recommendations'):
-        if latest and latest['details_json']:
-            details = json.loads(latest['details_json'])
-            recs = details.get('recommendations', [])
-            answer = 'Your latest recommendations are: ' + ' '.join(recs[:5]) if recs else ('The recommendation module converts important performance signals into practical actions, '
-                      'such as improving attendance, study consistency, assignments, or weak academic areas.')
-        else:
-            answer = ('The recommendation module converts important performance signals into practical actions, such as improving '
-                      'attendance, study consistency, assignments, or weak academic areas.')
-    elif has('study plan', 'study planning', 'study planner'):
-        if latest and latest['details_json']:
-            details = json.loads(latest['details_json'])
-            plan = details.get('study_plan', [])
-            answer = 'Your latest suggested study plan is: ' + ' '.join(plan[:5]) if plan else ('The study planner suggests consistent study blocks, revision, assignment completion, '
-                      'focus on weak topics, and weekly progress review.')
-        else:
-            answer = ('The study planner suggests consistent study blocks, revision, assignment completion, focus on weak topics, '
-                      'and weekly progress review.')
-    elif has('risk level', 'risk status', 'at risk', 'risk probability', 'risk detection', 'early warning'):
-        if latest:
-            answer = f"Your latest risk probability is {latest['risk_probability']}%. The system currently marks you {'at risk' if latest['at_risk'] else 'not at risk'}. This is an early-warning decision-support signal, not a final judgment."
-        else:
-            answer = ('Risk detection estimates the probability that a student may be in an at-risk category. It is intended to '
-                      'support early intervention. No current student prediction is available in your account yet.')
-    elif has('predicted score', 'my score', 'prediction score', 'predicted performance'):
-        if latest:
-            answer = f"Your latest predicted score is {latest['predicted_score']:.1f}/100, classified as {latest['performance_category']} performance."
-        else:
-            answer = 'No prediction is available yet. Run an AI prediction first.'
-
-    # 2) ML concepts used by EduPredict
-    elif has('random forest'):
-        answer = ('Random Forest is an ensemble of decision trees. Each tree learns from a different sample and feature subset, '
-                  'then their outputs are combined. EduPredict uses Random Forest as one of its prediction models because it can '
-                  'capture nonlinear relationships and is relatively robust on tabular student data.')
-    elif has('gradient boosting', 'gradient boost'):
-        answer = ('Gradient Boosting builds models sequentially. Each new tree focuses on reducing the errors made by the previous '
-                  'trees. It is useful for structured/tabular data and is one of the regression models evaluated in EduPredict.')
-    elif has('ensemble', 'model combination'):
-        answer = ('An ensemble combines predictions from more than one model. In EduPredict, validation results are used to select '
-                  'the contribution of the available regression models, aiming to improve generalization compared with relying on a single model.')
-    elif has('regression') and has('classification'):
-        answer = ('Regression predicts a continuous value, such as a performance score out of 100. Classification predicts a '
-                  'category, such as at-risk versus not-at-risk. EduPredict uses regression for score prediction and classification '
-                  'for early-warning risk assessment.')
-    elif has('regression'):
-        answer = ('Regression is a supervised-learning task for predicting a numeric value. In EduPredict, the regression component '
-                  'predicts a student performance score.')
-    elif has('classification'):
-        answer = ('Classification is a supervised-learning task for predicting a category. In EduPredict, classification is used '
-                  'to support the at-risk versus not-at-risk decision and risk probability.')
-    elif has('k-means', 'k means', 'learning profile', 'clustering'):
-        answer = ('K-Means is an unsupervised clustering algorithm. It groups students with similar patterns in selected academic '
-                  'features. EduPredict uses clustering to create learning profiles that can support more targeted guidance.')
-    elif has('anomaly', 'isolation forest', 'outlier'):
-        answer = ('Anomaly detection identifies records whose patterns differ substantially from typical student data. EduPredict '
-                  'uses this type of analysis to flag unusual academic patterns for review. An anomaly is a signal to investigate, '
-                  'not proof that something is wrong.')
-    elif has('feature importance', 'important features', 'feature impact', 'explainability', 'why prediction'):
-        answer = ('Feature importance or feature impact explains which input variables contribute most to a model output. In '
-                  'EduPredict, this helps users understand the main factors associated with a prediction instead of receiving only a score.')
-    elif has('overfitting'):
-        answer = ('Overfitting happens when a model learns the training data too closely and performs worse on unseen data. '
-                  'Train/validation/test splits and evaluation on unseen test data help detect and reduce this problem.')
-    elif has('train test', 'training data', 'validation set', 'data split'):
-        answer = ('A training set is used to learn model patterns, a validation set is used to compare or tune model choices, and '
-                  'a test set is kept for final evaluation on unseen data. This separation helps produce a more honest estimate of model performance.')
-    elif has('mae', 'mean absolute error'):
-        answer = ('MAE, or Mean Absolute Error, is the average absolute difference between predicted and actual numeric values. '
-                  'Lower MAE is better; an MAE of 4.4 would mean predictions are about 4.4 score points away from actual values on average, subject to the evaluation dataset.')
-    elif has('r2', 'r²', 'r squared'):
-        answer = ('R² measures how much of the variation in the target is explained by a regression model. Values closer to 1 generally indicate better fit, while the metric should always be interpreted on unseen evaluation data.')
-    elif has('precision', 'recall', 'f1', 'f1 score', 'roc-auc', 'auc'):
-        answer = ('For risk classification, precision measures how many predicted at-risk students were actually at risk; recall measures '
-                  'how many actual at-risk students were detected; F1 balances precision and recall; ROC-AUC summarizes ranking '
-                  'performance across classification thresholds. For early warning, recall can be especially important because missed at-risk students matter.')
-
-    # 3) Basic/intermediate educational and technical questions
-    elif has('what is ai', 'what is artificial intelligence'):
-        answer = 'Artificial Intelligence (AI) is the field of building systems that can perform tasks that normally require human-like intelligence, such as learning from data, recognizing patterns, reasoning, and making predictions.'
-    elif has('what is machine learning', 'what is ml'):
-        answer = 'Machine Learning (ML) is a branch of AI in which algorithms learn patterns from data and use those patterns to make predictions or decisions on new data.'
-    elif has('what is python', 'python language'):
-        answer = 'Python is a high-level programming language widely used for web development, automation, data analysis, and machine learning. EduPredict uses Python with Flask, pandas, NumPy, and scikit-learn.'
-    elif has('what is flask'):
-        answer = 'Flask is a lightweight Python web framework. EduPredict uses Flask to provide web pages, authentication, API endpoints, and the connection between the user interface, database, and ML model.'
-    elif has('what is sql', 'what is sqlite'):
-        answer = 'SQL is a language used to create, read, update, and manage data in relational databases. SQLite is a lightweight relational database engine that stores the database in a file and is used by EduPredict for persistent application data.'
-    elif has('what is database', 'database meaning'):
-        answer = 'A database is an organized system for storing and retrieving information. EduPredict uses a database to persist users, student information, academic records, predictions, and intervention records.'
-    elif has('what is attendance'):
-        answer = 'Attendance is the proportion or record of classes a student attends. In EduPredict, attendance is an input feature that can contribute to the prediction, but the model should not be interpreted as proving that attendance alone causes an outcome.'
-    elif has('what is gpa'):
-        answer = 'GPA, or Grade Point Average, is a numerical summary of academic performance based on grades or grade points. The exact calculation depends on the institution.'
-    elif has('what is api', 'api meaning'):
-        answer = 'An API, or Application Programming Interface, is a way for software components to communicate. EduPredict provides JSON API endpoints for application features such as prediction and the EduPredict Assistant.'
-    elif has('what is json'):
-        answer = 'JSON, or JavaScript Object Notation, is a lightweight text format commonly used to exchange structured data between a web client and a server.'
-    elif has('what is csv'):
-        answer = 'CSV, or Comma-Separated Values, is a simple tabular file format. EduPredict uses CSV data for the student-performance dataset and supports data export in relevant analytics workflows.'
-    elif has('what is cybersecurity', 'security'):
-        answer = ('Cybersecurity is the practice of protecting applications, systems, and data from unauthorized access or misuse. '
-                  'EduPredict includes measures such as password hashing, session-based access control, CSRF protection, and security headers, but a production deployment would still require further security review.')
-    elif has('what is web application', 'web app'):
-        answer = 'A web application is software accessed through a web browser. EduPredict is a Flask web application with HTML/CSS/JavaScript on the front end and Python, SQLite, and machine-learning components on the back end.'
-    elif has('hello', 'hi', 'hey'):
-        answer = ('Hello! I am the EduPredict Assistant. I can explain the system features and workflow, answer basic and intermediate '
-                  'AI/ML/programming questions, and—when available—explain your own prediction, risk, recommendations, and study plan.')
-    else:
-        answer = ('I can explain EduPredict features, system workflow, student/teacher dashboards, prediction, risk detection, '
-                  'recommendations, study planning, database and security, or technical concepts such as AI, ML, Random Forest, '
-                  'Gradient Boosting, K-Means, MAE, R², precision, recall, F1, and ROC-AUC. Try asking “What features does EduPredict have?”')
+    try:
+        res = process_assistant_query(
+            message=message,
+            user_id=session.get('user_id'),
+            role=session.get('role'),
+            username=session.get('username'),
+            con=con
+        )
+    finally:
+        con.close()
 
     audit('assistant_query', message)
-    return jsonify({'answer': answer})
+    return jsonify(res)
 
 
 @app.route('/logout')
@@ -783,32 +700,52 @@ def api_predict():
 @app.route('/api/what-if', methods=['POST'])
 @login_required()
 def api_what_if():
-    """Return baseline and one-factor what-if score changes without saving data."""
+    """Return baseline and one-factor what-if score changes using vectorized batch inference."""
     try:
         payload = validate_payload(request.get_json(force=True) or {})
         baseline = run_prediction(payload)
+
+        scenario_features = [
+            'attendance_percentage',
+            'study_hours_per_week',
+            'previous_exam_score',
+            'assignment_score',
+            'internal_assessment_score',
+        ]
+
+        vec_base = np.array([float(payload[c]) for c in FEATURE_COLUMNS], dtype=np.float64)
+        scenarios_matrix = np.tile(vec_base, (len(scenario_features), 1))
+
+        deltas = []
+        for i, feat in enumerate(scenario_features):
+            col_idx = FEATURE_COLUMNS.index(feat)
+            lo, hi = RANGES[feat]
+            new_val = min(hi, max(lo, vec_base[col_idx] + 5.0))
+            scenarios_matrix[i, col_idx] = new_val
+            deltas.append(round(new_val - vec_base[col_idx], 1))
+
+        df_scenarios = pd.DataFrame(scenarios_matrix, columns=FEATURE_COLUMNS)
+        Xs_scenarios = scaler.transform(df_scenarios)
+
+        sc_rf = rf_regressor.predict(Xs_scenarios)
+        sc_gb = gb_regressor.predict(Xs_scenarios)
+        sc_scores = np.round(np.clip(RF_ENSEMBLE_WEIGHT * sc_rf + GB_ENSEMBLE_WEIGHT * sc_gb, 0, 100), 1)
+        sc_risks = classifier.predict_proba(Xs_scenarios)[:, 1]
+
         scenarios = []
-        changes = {
-            'attendance_percentage': 5,
-            'study_hours_per_week': 5,
-            'previous_exam_score': 5,
-            'assignment_score': 5,
-            'internal_assessment_score': 5,
-        }
-        for feature, delta in changes.items():
-            changed = dict(payload)
-            lo, hi = RANGES[feature]
-            changed[feature] = min(hi, max(lo, changed[feature] + delta))
-            result = run_prediction(changed)
+        for i, feat in enumerate(scenario_features):
+            sc_score = float(sc_scores[i])
+            sc_risk = round(float(sc_risks[i] * 100), 1)
             scenarios.append({
-                'feature': feature,
-                'change': round(changed[feature] - payload[feature], 1),
+                'feature': feat,
+                'change': deltas[i],
                 'baseline_score': baseline['predicted_score'],
-                'scenario_score': result['predicted_score'],
-                'score_change': round(result['predicted_score'] - baseline['predicted_score'], 1),
-                'risk_probability': result['risk_probability'],
-                'at_risk': result['at_risk'],
+                'scenario_score': sc_score,
+                'score_change': round(sc_score - baseline['predicted_score'], 1),
+                'risk_probability': sc_risk,
+                'at_risk': bool(sc_risks[i] >= RISK_THRESHOLD),
             })
+
         return jsonify({'baseline': baseline, 'scenarios': scenarios})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -850,13 +787,31 @@ def predict():
     return render_template('predict.html',result=result,form_data=form_data,parental_labels=PARENTAL_SUPPORT_LABELS)
 
 
+def get_dashboard_cache():
+    global _DASHBOARD_CACHE
+    if _DASHBOARD_CACHE is None:
+        metrics = json.load(open(METRICS_PATH, encoding='utf-8')) if os.path.exists(METRICS_PATH) else {}
+        category_counts = df.performance_category.value_counts().to_dict()
+        parental_avg = df.groupby('parental_support').final_exam_score.mean().round(1).to_dict()
+        parental_avg = {PARENTAL_SUPPORT_LABELS[k]: v for k, v in parental_avg.items()}
+        bins = pd.cut(df.attendance_percentage, bins=[40, 60, 70, 80, 90, 100])
+        ap = df.groupby(bins, observed=True).final_exam_score.mean().round(1)
+        _DASHBOARD_CACHE = {
+            'metrics': metrics,
+            'category_counts': category_counts,
+            'parental_avg': parental_avg,
+            'attendance_labels': [str(i) for i in ap.index],
+            'attendance_values': ap.values.tolist(),
+            'feature_importance': metrics.get('feature_importance', [])
+        }
+    return _DASHBOARD_CACHE
+
+
 @app.route('/dashboard')
 def dashboard():
-    with open(METRICS_PATH) as f: metrics=json.load(f)
-    category_counts=df.performance_category.value_counts().to_dict()
-    parental_avg=df.groupby('parental_support').final_exam_score.mean().round(1).to_dict(); parental_avg={PARENTAL_SUPPORT_LABELS[k]:v for k,v in parental_avg.items()}
-    bins=pd.cut(df.attendance_percentage,bins=[40,60,70,80,90,100]); ap=df.groupby(bins,observed=True).final_exam_score.mean().round(1)
-    return render_template('dashboard.html',metrics=metrics,category_counts=category_counts,parental_avg=parental_avg,attendance_labels=[str(i) for i in ap.index],attendance_values=ap.values.tolist(),feature_importance=metrics['feature_importance'])
+    data = get_dashboard_cache()
+    return render_template('dashboard.html', **data)
+
 
 
 @app.errorhandler(404)

@@ -1,1 +1,62 @@
-{% extends 'base.html' %}{% block title %}Add Student{% endblock %}{% block content %}<div class="auth-card card"><h1>➕ Add Student</h1><p class="muted">Teacher-created accounts can immediately log in and submit live performance data.</p><form method="POST"><input type="hidden" name="_csrf" value="{{csrf_token}}"><label>Full name<input name="full_name" required></label><label>Student code<input name="student_code" required></label><label>Username<input name="username" required></label><label>Temporary password<input type="password" name="password" minlength="6" required></label><label>Email<input type="email" name="email"></label><div class="form-row"><label>Course<input name="course"></label><label>Year<input name="year"></label></div><button class="btn btn-primary btn-block">Create Account</button></form></div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Enroll New Student — Instructor Hub{% endblock %}
+
+{% block content %}
+<div class="auth-card card" style="max-width: 600px;">
+  <div style="text-align: center; margin-bottom: 24px;">
+    <div class="brand-icon" style="margin: 0 auto 12px; width: 46px; height: 46px; font-size: 1.4rem;">➕</div>
+    <h1 style="font-size: 1.8rem; margin: 0 0 6px;">Enroll New Student</h1>
+    <p class="page-subtitle" style="margin: 0;">Creates an active database record and student credentials.</p>
+  </div>
+
+  <form method="POST">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+
+    <div class="form-row">
+      <label>
+        Full Student Name
+        <input name="full_name" placeholder="Alex Rivera" required>
+      </label>
+      <label>
+        Student Code / ID
+        <input name="student_code" placeholder="STU2049" required>
+      </label>
+    </div>
+
+    <div class="form-row">
+      <label>
+        System Username
+        <input name="username" placeholder="alex.rivera" required>
+      </label>
+      <label>
+        Temporary Password
+        <input type="password" name="password" minlength="6" placeholder="At least 6 chars" required>
+      </label>
+    </div>
+
+    <label>
+      Campus Email (Optional)
+      <input type="email" name="email" placeholder="alex@campus.edu">
+    </label>
+
+    <div class="form-row">
+      <label>
+        Academic Stream
+        <input name="course" placeholder="Data Science">
+      </label>
+      <label>
+        Current Year
+        <input name="year" placeholder="2">
+      </label>
+    </div>
+
+    <button class="btn btn-primary btn-block" style="padding: 13px; font-size: 1rem; margin-top: 14px;">
+      <span>➕</span> Enroll Student &amp; Create Credentials
+    </button>
+  </form>
+
+  <p class="muted" style="text-align: center; margin-top: 20px; font-size: 0.9rem;">
+    <a href="{{ url_for('teacher_dashboard') }}" style="color: var(--text-muted); text-decoration: none;">← Return to Command Center</a>
+  </p>
+</div>
+{% endblock %}
